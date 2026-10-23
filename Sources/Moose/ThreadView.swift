@@ -301,7 +301,7 @@ struct ThreadView: View {
 
     private var dictationPill: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(dictation.text.isEmpty ? "Listening…" : dictation.text).font(.system(size: 14.5)).opacity(dictation.text.isEmpty ? 0.55 : 1).lineLimit(4).frame(maxWidth: .infinity, alignment: .leading)
+            Text(dictation.text.isEmpty ? (dictation.source.map { "Listening on \($0)…" } ?? "Listening…") : dictation.text).font(.system(size: 14.5)).opacity(dictation.text.isEmpty ? 0.55 : 1).lineLimit(4).frame(maxWidth: .infinity, alignment: .leading)
             HStack(spacing: 10) {
                 HStack(spacing: 2) {
                     ForEach(0..<7, id: \.self) { i in

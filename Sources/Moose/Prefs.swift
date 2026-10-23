@@ -24,6 +24,8 @@ final class Prefs {
     var refreshSeconds: Int { didSet { d.set(refreshSeconds, forKey: "refreshSeconds") } }
     var updateChannel: UpdateChannel { didSet { d.set(updateChannel.rawValue, forKey: "updateChannel") } }
     var autoCheckUpdates: Bool { didSet { d.set(autoCheckUpdates, forKey: "autoCheckUpdates") } }
+    /// UID of the microphone dictation uses; empty = automatic (the system choice, or an iPhone when the lid is closed).
+    var microphone: String { didSet { d.set(microphone, forKey: "microphone") } }
     var sidebarCollapsed: Bool { didSet { d.set(sidebarCollapsed, forKey: "sidebarCollapsed") } }
 
     /// Launch at login is on by default; the user can turn it off. Backed by SMAppService (Login Items).
@@ -36,6 +38,7 @@ final class Prefs {
         showDockIcon = d.bool(forKey: "showDockIcon")
         notify = d.bool(forKey: "notify")
         refreshSeconds = d.integer(forKey: "refreshSeconds")
+        microphone = d.string(forKey: "microphone") ?? Microphones.automatic
         sidebarCollapsed = d.bool(forKey: "sidebarCollapsed")
         autoCheckUpdates = d.bool(forKey: "autoCheckUpdates")
         updateChannel = UpdateChannel(rawValue: d.string(forKey: "updateChannel") ?? "") ?? .releases
