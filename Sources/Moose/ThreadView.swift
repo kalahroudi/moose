@@ -27,6 +27,8 @@ struct ThreadView: View {
     @State private var gettingCc = false
     @State private var dictation = Dictation()
     @State private var tidying = false
+    @State private var unsub: UnsubscribeOption?
+    @State private var unsubBusy = false
     @FocusState private var replyFocused: Bool
 
     var body: some View {
@@ -69,6 +71,7 @@ struct ThreadView: View {
                     Button("Mute for good") { mail.muteSender(message.fromEmail) }
                     Button("Mute everyone at this domain") { mail.muteDomain(of: message.fromEmail) }
                     Divider()
+                    Button("Block \(message.displayName): mute and archive everything") { mail.blockSender(message.fromEmail); Nav.shared.open = nil }.disabled(mail.isBlocked(message.fromEmail))
                     Button("File everything from \(message.displayName) in a folder") { mail.fileSender(message) }
                 } label: { Image(systemName: "bell.slash") }.menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize().help("Mute or file this sender")
                 Button { archive() } label: { Image(systemName: "archivebox") }.buttonStyle(Pill()).help("Archive  E")
@@ -185,6 +188,9 @@ struct ThreadView: View {
                 if !real.isEmpty { chip("\(real.count) \(real.count == 1 ? "link" : "links")", "link") }
                 if hidden > 0 { chip("\(hidden) tracker\(hidden == 1 ? "" : "s") hidden", "eye.slash") }
                 if !b.replyNeeded { chip("No reply needed", "checkmark") }
+                chip("Images & pixels blocked", "shield")
+                if let u = unsub { chip("Unsubscribe: \(u.summary)", "envelope.badge.shield.half.filled") }
+                if mail.isBlocked(message.fromEmail) { chip("Sender blocked", "nosign", warn: true) }
             }
             if !b.asks.isEmpty || b.replyNeeded {
                 Divider().opacity(0.6)
@@ -219,8 +225,22 @@ struct ThreadView: View {
             Text("Quick:").font(.system(size: 12)).foregroundStyle(.secondary)
             Button { archive() } label: { Text("Archive  E") }.buttonStyle(Pill())
             Button { mail.muteSender(message.fromEmail, days: 7); AppModel.shared.show("Muted \(message.displayName) for a week.", error: false) } label: { Text("Mute for a week") }.buttonStyle(Pill())
+            if unsub != nil || message.bulkHeader, !mail.isBlocked(message.fromEmail) {
+                if unsub != nil { Button { Task { await unsubscribe() } } label: { Text(unsubBusy ? "Unsubscribing…" : "Unsubscribe") }.buttonStyle(Pill()).disabled(unsubBusy).help("Ask the sender to stop, then block them") }
+                Button { mail.blockSender(message.fromEmail); Nav.shared.open = nil } label: { Text("Block") }.buttonStyle(Pill()).help("Mute this sender and archive their mail, now and on every sync")
+            }
             Button { openComposer() } label: { Text("Reply  R") }.buttonStyle(Pill(kind: .primary))
         }
+    }
+
+    private func unsubscribe() async {
+        guard let o = unsub, !unsubBusy else { return }
+        guard await mail.confirmUnsubscribe(message, o) else { return }
+        unsubBusy = true; defer { unsubBusy = false }
+        do {
+            _ = try await mail.unsubscribe(message, o)
+            if case .browser? = o.method {} else { Nav.shared.open = nil }
+        } catch { AppLog.error(error, context: "unsubscribe"); AppModel.shared.show(UserError.message(for: error, action: "Unsubscribe"), error: true) }
     }
 
     // MARK: Dock
@@ -343,6 +363,7 @@ struct ThreadView: View {
     // MARK: Actions
 
     private func load() async {
+        unsub = nil; unsubBusy = false
         raw = ""; cleaned = nil; brief = nil; briefLoading = false; selection = nil; quotes = []; showRaw = false; showFooter = false
         note = nil; cc = ""; dictation.cancel()
         reply = mail.data.composeDrafts[message.id] ?? ""
@@ -352,6 +373,7 @@ struct ThreadView: View {
         cleaned = c
         showDetails = c.isShort
         briefOpen = true
+        unsub = await mail.unsubscribeOption(for: message)
         if c.isShort { brief = mail.cachedBrief(message.id) } else { await makeBrief(c, force: false) }
     }
 

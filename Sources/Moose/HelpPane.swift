@@ -11,6 +11,7 @@ struct HelpPane: View {
         ("Favourite", "A sender that always ranks high and is never auto-muted."),
         ("Muted", "Newsletters, promos and automated mail. Muted mail is hidden from Priority but never deleted; review it any time."),
         ("Routing", "Rules in plain English: favourite someone, boost a topic, mute for a while, or file mail into a folder (a Gmail label) like “move emails from stripe.com to Receipts”. Filed mail lives under Folders in the sidebar: open, stack (⌘T), reorder by dragging, or right-click for mark all read, move to inbox, rename, empty and delete."),
+        ("Unsubscribe and Block", "Unsubscribe asks the sender to stop, by their own one-click request, a short email from your account, or their page when that is all they offer. Moose always asks first, then blocks the sender. Block mutes a sender and archives their mail now and on every sync; one Undo reverses it. Images, tracking pixels, ads and cookies never load, because Moose reads text only."),
         ("Agent access", "How much an AI agent connected over MCP may do. Read only, Draft & ask (you approve every send) or Full access (with a short undo window)."),
         ("Google client", "A sign-in key you create once in your own Google Cloud account. Moose is open source and ships none, so no one else ever sees your mail."),
         ("MCP", "Model Context Protocol: the standard way AI agents such as Claude Code use apps. Moose ships its own MCP server."),

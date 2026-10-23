@@ -56,7 +56,9 @@ final class MailModel {
         let text: String
         var folder: String? = nil        // for .file: where the messages went
         var container: MailContainer = .inbox   // where they were taken from
+        var ruleID: UUID? = nil          // a block rule made with this action: undoing removes it too
     }
+    private var unsubCache: [String: UnsubscribeOption] = [:]
     private(set) var undoStack: [UndoEntry] = []
     /// Mail that filing rules moved out of the inbox, by `Folders.key`. Loaded from the Gmail label when a folder is opened; not saved to disk.
     private(set) var folderMessages: [String: [MailMessage]] = [:]
@@ -187,6 +189,7 @@ final class MailModel {
             } catch { failed += 1; AppLog.error(error, context: "sync") }
         }
         let filed = autoFile(data.messages)
+        _ = autoBlock(data.messages)
         persistSoon()
         await refreshFolders()
         if Nav.shared.pane == .folder, let f = Nav.shared.folder { await loadFolder(f) }
@@ -251,6 +254,77 @@ final class MailModel {
         }
     }
 
+    /// Archives new mail from blocked senders so it never reaches the inbox. Quiet; runs on every sync.
+    private func autoBlock(_ messages: [MailMessage]) -> Int {
+        let rules = data.rules.filter { $0.action == .block && $0.isActive() }
+        guard !rules.isEmpty else { return 0 }
+        let hit = messages.filter { m in rules.contains { $0.matches(m) } }
+        guard !hit.isEmpty else { return 0 }
+        mutateLocal(.archive, hit, inverse: false); remote(.archive, hit, inverse: false)
+        return hit.count
+    }
+
+    // MARK: Unsubscribe and block
+
+    func isBlocked(_ email: String) -> Bool { data.rules.contains { $0.action == .block && $0.isActive() && $0.senders.contains(email.lowercased()) } }
+
+    /// Blocks a sender: their mail is archived now and on every sync after. One Undo puts it all back.
+    @discardableResult
+    func blockSender(_ email: String, said: String? = nil) -> Int {
+        let e = email.lowercased()
+        var ruleID: UUID?
+        if !isBlocked(e) { let r = Rule(senders: [e], action: .block, source: "you"); data.rules.append(r); ruleID = r.id }
+        let msgs = data.messages.filter { $0.fromEmail == e }
+        let text = said ?? "Blocked \(e)" + (msgs.isEmpty ? "" : " and archived \(msgs.count)")
+        if apply(.archive, to: msgs, sender: e, ruleID: ruleID, text: text) == nil {
+            persistSoon()
+            AppModel.shared.show(said ?? "Blocked \(e)", actionTitle: ruleID == nil ? nil : "Undo") { [self] in if let ruleID { removeRule(ruleID) } }
+        } else { persistSoon() }
+        return msgs.count
+    }
+
+    /// How the sender lets you opt out: the List-Unsubscribe header, or failing that an unsubscribe link in the text. Nil when there is none.
+    func unsubscribeOption(for m: MailMessage) async -> UnsubscribeOption? {
+        if let o = unsubCache[m.id] { return o }
+        if demo { return m.bulkHeader ? UnsubscribeOption(https: URL(string: "https://news.example/unsubscribe"), mailto: nil, oneClick: true) : nil }
+        var o: UnsubscribeOption?
+        if m.bulkHeader { o = try? await gmail(m.account)?.unsubscribeOption(m.id) }
+        if o == nil { o = UnsubscribeOption.fromBody(MailText.links(in: await fullText(m))) }
+        if let o { unsubCache[m.id] = o }
+        return o
+    }
+
+    /// Asks the user in a native dialog, saying plainly what will be sent and to whom.
+    func confirmUnsubscribe(_ m: MailMessage, _ o: UnsubscribeOption, byAgent: Bool = false) async -> Bool {
+        let what: String = switch o.method {
+        case .oneClick?: "Moose will send the sender's own one-click unsubscribe request. No email is sent and no page opens."
+        case .email(let to, _, _)?: "Moose will send a short unsubscribe email from \(m.account) to \(to)."
+        case .browser?: "Moose will open the sender's unsubscribe page in your browser. You finish it there."
+        case nil: ""
+        }
+        let after = { if case .browser? = o.method { return "" }; return "\n\nThen \(m.fromEmail) is blocked and their mail here is archived. Undo restores it." }()
+        return await Approval.ask(title: "\(byAgent ? "An agent wants to unsubscribe" : "Unsubscribe") from \(m.displayName)?", detail: what + after, confirm: "Unsubscribe", decline: "Cancel")
+    }
+
+    /// Unsubscribes by the best method the sender offers, then blocks them. The caller has already confirmed.
+    func unsubscribe(_ m: MailMessage, _ o: UnsubscribeOption) async throws -> String {
+        switch o.method {
+        case .oneClick(let u)?:
+            if !demo { try await Unsubscriber.postOneClick(u) }
+            blockSender(m.fromEmail, said: "Unsubscribed from \(m.displayName) and blocked them")
+            return "Unsubscribed with one click. \(m.fromEmail) is blocked and their mail archived."
+        case .email(let to, let subject, let body)?:
+            if !demo { try await queueNew(account: m.account, to: to, subject: subject, body: body, undoSeconds: data.undoSeconds, byAgent: false, signature: false) }
+            blockSender(m.fromEmail, said: "Unsubscribe email to \(m.displayName) goes out in \(data.undoSeconds) s. Blocked them")
+            return "Unsubscribe email queued (sends in \(data.undoSeconds) s, cancel it from the outbox banner). \(m.fromEmail) is blocked."
+        case .browser(let u)?:
+            if !demo { NSWorkspace.shared.open(u) }
+            AppModel.shared.show("Opened \(MailText.linkLabel(u.absoluteString)) in your browser. Finish there, then block the sender if you like.")
+            return "Opened the sender's page at \(MailText.linkLabel(u.absoluteString)) in the user's browser. The user has to finish it there; nothing was blocked."
+        case nil: throw UserFacingError("This sender doesn't offer an unsubscribe option.")
+        }
+    }
+
     /// Files mail that matches a folder rule: label in Gmail, out of the inbox. Quiet (no undo toast); used on every sync.
     private func autoFile(_ messages: [MailMessage]) -> Int {
         let fileRules = data.rules.filter { $0.isActive() && $0.folder != nil }
@@ -305,7 +379,7 @@ final class MailModel {
 
     /// Applies an action to many messages at once. The local cache changes immediately; Gmail follows.
     @discardableResult
-    func apply(_ action: StackAction, to messages: [MailMessage], sender: String? = nil, folder: String? = nil, container: MailContainer = .inbox) -> UndoEntry? {
+    func apply(_ action: StackAction, to messages: [MailMessage], sender: String? = nil, folder: String? = nil, container: MailContainer = .inbox, ruleID: UUID? = nil, text customText: String? = nil) -> UndoEntry? {
         let present: Set<String>
         switch container {
         case .inbox: present = Set(data.messages.map(\.id))
@@ -315,7 +389,8 @@ final class MailModel {
         guard !targets.isEmpty else { return nil }
         var text = folder.map { "\(action.verb()) \(targets.count) in “\($0)”" } ?? action.summary(count: targets.count, sender: sender)
         if case .folder(let f) = container, action == .archive { text = "Cleared \(targets.count) from “\(f)”" + (sender.map { " (\($0))" } ?? "") }
-        let entry = UndoEntry(action: action, messages: targets, text: text, folder: folder, container: container)
+        if let customText { text = customText }
+        let entry = UndoEntry(action: action, messages: targets, text: text, folder: folder, container: container, ruleID: ruleID)
         mutateLocal(action, targets, inverse: false, container: container, folder: folder)
         remote(action, targets, inverse: false, folder: folder, container: container)
         undoStack.append(entry); if undoStack.count > 20 { undoStack.removeFirst() }
@@ -328,6 +403,7 @@ final class MailModel {
         guard let entry = undoStack.popLast() else { return }
         mutateLocal(entry.action, entry.messages, inverse: true, container: entry.container, folder: entry.folder)
         remote(entry.action, entry.messages, inverse: true, folder: entry.folder, container: entry.container)
+        if let r = entry.ruleID { removeRule(r) }
         undoToast = nil
         AppModel.shared.show("Undone: \(entry.text)")
     }
@@ -628,14 +704,14 @@ final class MailModel {
 
     /// A brand-new email (not a reply), sent the same way: draft first, then sent after the undo window.
     @discardableResult
-    func queueNew(account: String, to: String, cc: String = "", bcc: String = "", subject: String, body: String, attachments: [MailAttachment] = [], undoSeconds: Int, byAgent: Bool) async throws -> PendingSend {
-        try await queueSend(account: account, to: to, cc: cc, bcc: bcc, subject: subject, body: body, attachments: attachments, threadId: nil, inReplyTo: nil, references: nil, undoSeconds: undoSeconds, byAgent: byAgent, onSent: nil)
+    func queueNew(account: String, to: String, cc: String = "", bcc: String = "", subject: String, body: String, attachments: [MailAttachment] = [], undoSeconds: Int, byAgent: Bool, signature: Bool = true) async throws -> PendingSend {
+        try await queueSend(account: account, to: to, cc: cc, bcc: bcc, subject: subject, body: body, attachments: attachments, threadId: nil, inReplyTo: nil, references: nil, undoSeconds: undoSeconds, byAgent: byAgent, signature: signature, onSent: nil)
     }
 
     private func queueSend(account: String, to: String, cc: String = "", bcc: String = "", subject: String, body: String, attachments: [MailAttachment] = [], threadId: String?, inReplyTo: String?, references: String?,
-                           undoSeconds: Int, byAgent: Bool, onSent: (() -> Void)?) async throws -> PendingSend {
+                           undoSeconds: Int, byAgent: Bool, signature: Bool = true, onSent: (() -> Void)?) async throws -> PendingSend {
         guard let g = gmail(account) else { throw UserFacingError("That account isn't connected any more.") }
-        let draft = try await g.createDraft(to: to, subject: subject, body: body + (data.sendSignature.isEmpty ? "" : "\n\n" + data.sendSignature),
+        let draft = try await g.createDraft(to: to, subject: subject, body: body + (!signature || data.sendSignature.isEmpty ? "" : "\n\n" + data.sendSignature),
                                             threadId: threadId, inReplyTo: inReplyTo, references: references, attachments: attachments, cc: cc, bcc: bcc)
         let p = PendingSend(draftID: draft, account: account, to: to, subject: subject, deadline: Date().addingTimeInterval(Double(undoSeconds)), byAgent: byAgent, isReply: threadId != nil)
         outbox.append(p)
@@ -731,7 +807,7 @@ final class MailModel {
         case "get_clean_text":
             guard let id = str("message_id"), let m = message(id) else { return fail("Unknown message_id. Use list_stacks to find ids.") }
             let c = await cleanedText(m)
-            return ok("From: \(m.displayName) <\(m.fromEmail)>\nSubject: \(m.subject)\n\n\(String(c.plain.prefix(6000)))\(c.footer.isEmpty ? "" : "\n\n[footer folded: \(c.footer.count) blocks]")\(c.links.isEmpty ? "" : "\n\nLinks:\n" + c.links.prefix(10).map { "- \($0.label)\($0.tracker ? " (tracking)" : ""): \($0.url)" }.joined(separator: "\n"))")
+            return ok("From: \(m.displayName) <\(m.fromEmail)>\nSubject: \(m.subject)\n\n\(String(c.plain.prefix(6000)))\(c.footer.isEmpty ? "" : "\n\n[footer folded: \(c.footer.count) blocks]")\(await unsubscribeOption(for: m).map { "\n\nUnsubscribe available: \($0.summary). Use unsubscribe or block_sender." } ?? "")\(c.links.isEmpty ? "" : "\n\nLinks:\n" + c.links.prefix(10).map { "- \($0.label)\($0.tracker ? " (tracking)" : ""): \($0.url)" }.joined(separator: "\n"))")
         case "get_brief":
             guard let id = str("message_id"), let m = message(id) else { return fail("Unknown message_id. Use list_stacks to find ids.") }
             let c = await cleanedText(m)
@@ -834,6 +910,25 @@ final class MailModel {
             let on = (a["on"] as? Bool) ?? true
             if on != favourites.contains(e) { toggleFavourite(e) }
             return ok(on ? "\(e) is now a favourite." : "\(e) is no longer a favourite.")
+        case "unsubscribe_info":
+            guard let id = str("message_id"), let m = message(id) else { return fail("Unknown message_id.") }
+            guard let o = await unsubscribeOption(for: m) else { return ok("No unsubscribe option. This sender doesn't offer one; use block_sender to silence them.") }
+            return ok("Unsubscribe is available: \(o.summary).\nSender: \(m.fromEmail)\(isBlocked(m.fromEmail) ? "\nAlready blocked." : "")")
+        case "unsubscribe":
+            guard let id = str("message_id"), let m = message(id) else { return fail("Unknown message_id.") }
+            guard let o = await unsubscribeOption(for: m) else { return fail("This sender offers no unsubscribe option. Use block_sender instead.") }
+            switch SendPolicy.decide(access) {
+            case .refuse(let why): return fail(why)
+            case .askUser:
+                guard await confirmUnsubscribe(m, o, byAgent: true) else { return fail("The user declined, or didn't answer in time. Nothing was sent.") }
+            case .sendAfterUndo: break
+            }
+            do { return ok(try await unsubscribe(m, o)) }
+            catch { AppLog.error(error, context: "agent unsubscribe"); return fail((error as? UserFacingError)?.message ?? "Couldn't unsubscribe.") }
+        case "block_sender":
+            guard let e = (str("sender") ?? str("message_id").flatMap { message($0)?.fromEmail })?.lowercased(), e.contains("@") else { return fail("Give a sender email address, or a message_id.") }
+            let n = blockSender(e)
+            return ok("Blocked \(e)\(n > 0 ? " and archived \(n) in the inbox" : ""). New mail from them is archived on every sync. Undo with undo_last, or remove the block with delete_rule.")
         case "mute_sender": guard let e = str("sender")?.lowercased() else { return fail("Missing sender.") }; muteSender(e); return ok("Muted \(e). Undo with delete_rule.")
         case "create_rule":
             guard let t = str("text"), var r = RuleParser.parse(t) else { return fail("Couldn't understand that rule. Try: \"mute newsletters\", \"favourite maya@acme.com\", \"boost invoice by 25\" or \"move emails from stripe.com to Receipts\".") }

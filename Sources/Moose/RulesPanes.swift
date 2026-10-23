@@ -8,7 +8,7 @@ struct RoutingPane: View {
     let mail = MailModel.shared
     @State private var text = ""
     @State private var hint: String?
-    private var rules: [Rule] { mail.rules.filter { $0.action != .mute } }
+    private var rules: [Rule] { mail.rules.filter { !$0.isSilencing } }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -33,7 +33,7 @@ struct MutingPane: View {
     let mail = MailModel.shared
     @State private var text = ""
     @State private var hint: String?
-    private var rules: [Rule] { mail.rules.filter { $0.action == .mute } }
+    private var rules: [Rule] { mail.rules.filter(\.isSilencing) }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -102,7 +102,7 @@ struct RuleCard: View {
 
     init(rule: Rule) {
         let m = MailModel.shared
-        symbol = rule.folder != nil ? "folder" : rule.action == .mute ? "bell.slash" : rule.action == .favourite ? "star.fill" : "arrow.up.right"
+        symbol = rule.folder != nil ? "folder" : rule.action == .block ? "nosign" : rule.action == .mute ? "bell.slash" : rule.action == .favourite ? "star.fill" : "arrow.up.right"
         title = rule.title; action = rule.actionText
         meta = rule.source == "you" ? "yours" : "added by \(rule.source)"
         onDelete = { m.removeRule(rule.id) }

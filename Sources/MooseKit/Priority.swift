@@ -54,7 +54,7 @@ public enum Priority {
             switch rule.action {
             case .favourite: add(40, "rule: \(rule.title)")
             case .boost(let n): add(n, "rule: \(rule.title)")
-            case .mute: muted = .rule; add(-50, "muted: \(rule.title)")
+            case .mute, .block: muted = .rule; add(-50, "muted: \(rule.title)")
             case .file: break   // filing happens in Gmail (see MailModel); it does not change the score
             }
         }

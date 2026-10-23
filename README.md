@@ -73,7 +73,7 @@ swift build && swift test && scripts/bundle.sh && open dist/Moose.app
 
 ## MCP tools
 
-`get_status` · `list_stacks` · `search_messages` · `list_rules` · `read_message` · `get_clean_text` · `get_brief` · `sync_mail` · `mark_read` · `archive_message` · `archive_messages` · `trash_messages` · `undo_last` · `set_favourite` · `mute_sender` · `create_rule` · `delete_rule` · `list_microphones` · `set_microphone` · `list_folders` · `list_folder` · `folder_action` · `move_to_inbox` · `rename_folder` · `move_folder` · `set_folder_filing` · `delete_folder` · `draft_reply` · `send_reply` · `draft_email` · `send_email`
+`get_status` · `list_stacks` · `search_messages` · `list_rules` · `read_message` · `get_clean_text` · `get_brief` · `sync_mail` · `mark_read` · `archive_message` · `archive_messages` · `trash_messages` · `undo_last` · `set_favourite` · `mute_sender` · `block_sender` · `get_unsubscribe_options` · `unsubscribe` · `create_rule` · `delete_rule` · `list_microphones` · `set_microphone` · `list_folders` · `list_folder` · `folder_action` · `move_to_inbox` · `rename_folder` · `move_folder` · `set_folder_filing` · `delete_folder` · `draft_reply` · `send_reply` · `draft_email` · `send_email`
 
 Connect agents from **Agents** in the sidebar (Claude Code, Claude Desktop, Cursor, Windsurf, Gemini CLI, Codex CLI), or manually:
 
