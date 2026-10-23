@@ -41,7 +41,7 @@ struct StackListPane: View {
             PaneHeader(title: pane.title, subtitle: subtitle) {
                 HStack(spacing: 8) {
                     if pane == .priority { Segmented(options: [(true, "Unread"), (false, "All")], selection: $unreadOnly) }
-                    SearchBox(prompt: "Search", text: $query).frame(width: 170)
+                    SearchBox(prompt: "Search", text: $query).frame(minWidth: 90, idealWidth: 170, maxWidth: 170)
                     Button("Stack") { AppDelegate.shared.showStack() }.buttonStyle(Pill()).help("Go through priority mail one card at a time  ⌘T")
                     Button { Task { await mail.sync() } } label: { Image(systemName: "arrow.clockwise").rotationEffect(.degrees(mail.syncing ? 180 : 0)) }
                         .buttonStyle(Pill()).disabled(mail.syncing).help("Check for new mail").accessibilityLabel("Check for new mail")
@@ -51,8 +51,11 @@ struct StackListPane: View {
                 LazyVStack(spacing: 12) {
                     ForEach(stacks) { StackCard(stack: $0) }
                     if stacks.isEmpty { empty }
-                    if pane == .priority, !mail.mutedSummary().isEmpty { mutedLine }
                 }.padding(16)
+            }
+            if pane == .priority, !mail.mutedSummary().isEmpty {
+                Divider()
+                mutedLine.padding(.horizontal, 16)
             }
         }
     }
@@ -71,7 +74,7 @@ struct StackListPane: View {
                 Image(systemName: "bell.slash").foregroundStyle(.secondary)
                 Text("\(s.reduce(0) { $0 + $1.1 }) muted · " + s.map { "\($0.1) \($0.0.label)" }.joined(separator: " · ")).font(.system(size: 12)).foregroundStyle(.secondary)
                 Spacer(); Text("Review").font(.system(size: 12)).foregroundStyle(Theme.accent)
-            }.padding(.horizontal, 6).padding(.vertical, 8).contentShape(Rectangle())
+            }.padding(.vertical, 10).contentShape(Rectangle())
         }.buttonStyle(.plain)
     }
 }
