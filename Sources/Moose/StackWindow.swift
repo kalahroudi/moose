@@ -104,6 +104,49 @@ final class StackModel {
     }
 }
 
+/// Mouse support for the Stack window: back/forward buttons and the scroll wheel or trackpad flip cards.
+/// While reading, scrolling is left to the card's own text.
+@MainActor
+final class StackMouse {
+    static let shared = StackMouse()
+    private var monitor: Any?
+    private var travel: CGFloat = 0
+    private var fired = false
+    private var last = Date.distantPast
+
+    func install() {
+        guard monitor == nil else { return }
+        monitor = NSEvent.addLocalMonitorForEvents(matching: [.otherMouseDown, .scrollWheel]) { [weak self] e in
+            guard let self, e.window?.contentView is NSHostingView<StackView> else { return e }
+            return MainActor.assumeIsolated { self.handle(e) ? nil : e }
+        }
+    }
+
+    func remove() { if let m = monitor { NSEvent.removeMonitor(m) }; monitor = nil }
+
+    private func handle(_ e: NSEvent) -> Bool {
+        let st = StackModel.shared
+        guard st.mode == .browse, !st.showAll else { return false }
+        if e.type == .otherMouseDown {
+            switch e.buttonNumber {
+            case 3: st.step(-1); return true
+            case 4: st.step(1); return true
+            default: return false
+            }
+        }
+        if e.phase.contains(.began) || e.phase.contains(.mayBegin) { travel = 0; fired = false }
+        let dx = e.scrollingDeltaX, dy = e.scrollingDeltaY
+        travel += abs(dx) > abs(dy) ? dx : dy
+        let gesture = !e.phase.isEmpty
+        if gesture ? !fired : Date().timeIntervalSince(last) > 0.12, abs(travel) > (e.hasPreciseScrollingDeltas ? 40 : 1) {
+            st.step(travel < 0 ? 1 : -1)
+            fired = true; last = Date(); travel = 0
+        }
+        if e.phase.contains(.ended) || e.phase.contains(.cancelled) { travel = 0; fired = false }
+        return true
+    }
+}
+
 struct StackView: View {
     let st = StackModel.shared
     let mail = MailModel.shared
@@ -122,7 +165,8 @@ struct StackView: View {
         .animation(.easeOut(duration: 0.18), value: mail.undoToast?.id)
         .frame(minWidth: 520, minHeight: 460)
         .overlay(alignment: .bottom) { ToastView() }
-        .onAppear { model.setStackVisible(true) }
+        .onAppear { model.setStackVisible(true); StackMouse.shared.install() }
+        .onDisappear { StackMouse.shared.remove() }
         .onChange(of: mail.lastSync) { _, _ in if st.live.isEmpty { st.rebuild() } }
     }
 
