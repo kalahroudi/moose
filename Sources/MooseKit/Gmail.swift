@@ -9,6 +9,7 @@ public actor GmailClient {
     public let account: String
     private let client: GoogleClient
     private var token: TokenSet?
+    private var labelCache: [String: String] = [:]
     private let base = "https://gmail.googleapis.com/gmail/v1/users/me"
 
     public init(account: String, client: GoogleClient) { self.account = account; self.client = client }
@@ -150,6 +151,18 @@ public actor GmailClient {
             for _ in 0..<6 { next() }
             while try await group.next() != nil { next() }
         }
+    }
+
+    /// The id of a user label (Gmail's "folder") by name, creating it when it doesn't exist. Nested names like "School/Cassiobury" work.
+    public func labelID(named name: String) async throws -> String {
+        if let id = labelCache[name.lowercased()] { return id }
+        let existing = ((try await request("/labels")["labels"] as? [[String: Any]]) ?? [])
+        for l in existing { if let n = l["name"] as? String, let id = l["id"] as? String { labelCache[n.lowercased()] = id } }
+        if let id = labelCache[name.lowercased()] { return id }
+        let made = try await request("/labels", method: "POST", body: ["name": name, "labelListVisibility": "labelShow", "messageListVisibility": "show"])
+        guard let id = made["id"] as? String else { throw GmailError.decode }
+        labelCache[name.lowercased()] = id
+        return id
     }
 
     public func markRead(_ id: String) async throws { try await modify(id, remove: ["UNREAD"]) }

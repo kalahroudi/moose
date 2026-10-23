@@ -45,6 +45,7 @@ final class MailModel {
         let action: StackAction
         let messages: [MailMessage]      // exactly as they were
         let text: String
+        var folder: String? = nil        // for .file: where the messages went
     }
     private(set) var undoStack: [UndoEntry] = []
     private(set) var undoToast: UndoEntry?
@@ -168,7 +169,9 @@ final class MailModel {
                 data.syncedAt[acct.email] = Date()
             } catch { failed += 1; AppLog.error(error, context: "sync \(acct.email)") }
         }
+        let filed = autoFile(data.messages)
         persistSoon()
+        if filed > 0 { AppModel.shared.show("Filed \(filed) new \(filed == 1 ? "email" : "emails") into your folders") }
         if failed > 0 { AppModel.shared.show("Couldn't refresh \(failed == 1 ? "one account" : "\(failed) accounts"). Check your connection; details are in the log.", error: true) }
     }
 
@@ -187,11 +190,52 @@ final class MailModel {
         persistSoon()
     }
 
-    func muteSender(_ email: String) {
-        data.rules.append(Rule(senders: [email], action: .mute, source: "you")); persistSoon()
+    /// Mutes one sender, for good or for a number of days.
+    func muteSender(_ email: String, days: Int? = nil) {
+        let until = days.map { Date().addingTimeInterval(Double($0) * 86400) }
+        data.rules.append(Rule(senders: [email], action: .mute, source: "you", until: until)); persistSoon()
+        AppModel.shared.show(days.map { "Muted \(email) for \($0 == 7 ? "a week" : "\($0) days")" } ?? "Muted \(email)")
     }
 
-    func addRule(_ rule: Rule) { data.rules.append(rule); persistSoon() }
+    /// Mutes everyone at the sender's domain ("@news.club.com"), e.g. all of a company's marketing addresses.
+    func muteDomain(of email: String) {
+        guard let at = email.lastIndex(of: "@") else { return }
+        let domain = String(email[email.index(after: at)...])
+        data.rules.append(Rule(senders: ["@" + domain], action: .mute, source: "you")); persistSoon()
+        AppModel.shared.show("Muted everything from @\(domain)")
+    }
+
+    /// Files everything from this sender in a Gmail label named after them.
+    func fileSender(_ m: MailMessage) {
+        let name = m.fromName.isEmpty ? m.fromEmail : m.fromName
+        AppModel.shared.show(addRule(Rule(senders: [m.fromEmail], action: .file(name), source: "you")))
+    }
+
+    /// Adds a rule and says in one sentence what it did. A folder rule also files the matching mail already in the inbox.
+    @discardableResult
+    func addRule(_ rule: Rule) -> String {
+        data.rules.append(rule)
+        let matching = data.messages.filter { rule.matches($0) }
+        defer { persistSoon() }
+        switch rule.action {
+        case .file(let folder):
+            guard !matching.isEmpty else { return "Rule added. Nothing in your inbox matches yet; new mail \(rule.title) will be filed in “\(folder)”." }
+            apply(.file, to: matching, folder: folder)
+            return "Rule added. Filed \(matching.count) \(matching.count == 1 ? "email" : "emails") in “\(folder)” and the rest will follow."
+        case .mute: return "Rule added. \(matching.count) \(matching.count == 1 ? "email is" : "emails are") muted now."
+        default: return "Rule added."
+        }
+    }
+
+    /// Files mail that matches a folder rule: label in Gmail, out of the inbox. Quiet (no undo toast); used on every sync.
+    private func autoFile(_ messages: [MailMessage]) -> Int {
+        let fileRules = data.rules.filter { $0.isActive() && $0.folder != nil }
+        guard !fileRules.isEmpty else { return 0 }
+        var byFolder: [String: [MailMessage]] = [:]
+        for m in messages { if let f = fileRules.first(where: { $0.matches(m) })?.folder { byFolder[f, default: []].append(m) } }
+        for (folder, msgs) in byFolder { mutateLocal(.file, msgs, inverse: false); remote(.file, msgs, inverse: false, folder: folder) }
+        return byFolder.values.reduce(0) { $0 + $1.count }
+    }
     func removeRule(_ id: UUID) { data.rules.removeAll { $0.id == id }; persistSoon() }
     func setRule(_ id: UUID, enabled: Bool) { if let i = data.rules.firstIndex(where: { $0.id == id }) { data.rules[i].enabled = enabled; persistSoon() } }
 
@@ -214,13 +258,14 @@ final class MailModel {
 
     /// Applies an action to many messages at once. The local cache changes immediately; Gmail follows.
     @discardableResult
-    func apply(_ action: StackAction, to messages: [MailMessage], sender: String? = nil) -> UndoEntry? {
+    func apply(_ action: StackAction, to messages: [MailMessage], sender: String? = nil, folder: String? = nil) -> UndoEntry? {
         let present = Set(data.messages.map(\.id))
         let targets = messages.filter { present.contains($0.id) }
         guard !targets.isEmpty else { return nil }
-        let entry = UndoEntry(action: action, messages: targets, text: action.summary(count: targets.count, sender: sender))
+        let text = folder.map { "\(action.verb()) \(targets.count) in “\($0)”" } ?? action.summary(count: targets.count, sender: sender)
+        let entry = UndoEntry(action: action, messages: targets, text: text, folder: folder)
         mutateLocal(action, targets, inverse: false)
-        remote(action, targets, inverse: false)
+        remote(action, targets, inverse: false, folder: folder)
         undoStack.append(entry); if undoStack.count > 20 { undoStack.removeFirst() }
         undoToast = entry
         Task { try? await Task.sleep(for: .seconds(10)); if undoToast?.id == entry.id { undoToast = nil } }
@@ -230,7 +275,7 @@ final class MailModel {
     func undo() {
         guard let entry = undoStack.popLast() else { return }
         mutateLocal(entry.action, entry.messages, inverse: true)
-        remote(entry.action, entry.messages, inverse: true)
+        remote(entry.action, entry.messages, inverse: true, folder: entry.folder)
         undoToast = nil
         AppModel.shared.show("Undone: \(entry.text)")
     }
@@ -239,8 +284,8 @@ final class MailModel {
     private func mutateLocal(_ action: StackAction, _ msgs: [MailMessage], inverse: Bool) {
         let ids = Set(msgs.map(\.id))
         switch (action, inverse) {
-        case (.archive, false), (.trash, false): data.messages.removeAll { ids.contains($0.id) }
-        case (.archive, true), (.trash, true): data.messages += msgs.filter { m in !data.messages.contains { $0.id == m.id } }
+        case (.archive, false), (.trash, false), (.file, false): data.messages.removeAll { ids.contains($0.id) }
+        case (.archive, true), (.trash, true), (.file, true): data.messages += msgs.filter { m in !data.messages.contains { $0.id == m.id } }
         case (.markRead, false): for i in data.messages.indices where ids.contains(data.messages[i].id) { data.messages[i].unread = false }
         case (.markRead, true):
             let wasUnread = Set(msgs.filter(\.unread).map(\.id))
@@ -249,7 +294,7 @@ final class MailModel {
         persistSoon()
     }
 
-    private func remote(_ action: StackAction, _ msgs: [MailMessage], inverse: Bool) {
+    private func remote(_ action: StackAction, _ msgs: [MailMessage], inverse: Bool, folder: String? = nil) {
         if demo { return }
         pendingOps += 1
         Task {
@@ -265,6 +310,10 @@ final class MailModel {
                     case (.markRead, false): try await g.batchModify(ids, remove: ["UNREAD"])
                     case (.markRead, true): try await g.batchModify(group.filter(\.unread).map(\.id), add: ["UNREAD"])
                     case (.trash, _): try await g.trash(ids, undo: inverse)
+                    case (.file, _):
+                        guard let folder else { break }
+                        let label = try await g.labelID(named: folder)
+                        if inverse { try await g.batchModify(ids, add: ["INBOX"], remove: [label]) } else { try await g.batchModify(ids, add: [label], remove: ["INBOX"]) }
                     }
                 } catch { failed = true; AppLog.error(error, context: "bulk \(action.rawValue)") }
             }
@@ -348,8 +397,8 @@ final class MailModel {
             return ok(on ? "\(e) is now a favourite." : "\(e) is no longer a favourite.")
         case "mute_sender": guard let e = str("sender")?.lowercased() else { return fail("Missing sender.") }; muteSender(e); return ok("Muted \(e). Undo with delete_rule.")
         case "create_rule":
-            guard let t = str("text"), var r = RuleParser.parse(t) else { return fail("Couldn't understand that rule. Try: \"mute newsletters\", \"favourite maya@acme.com\" or \"boost invoice by 25\".") }
-            r.source = "agent"; addRule(r); return ok("Rule added (\(r.id.uuidString)): \(r.actionText) \(r.title)")
+            guard let t = str("text"), var r = RuleParser.parse(t) else { return fail("Couldn't understand that rule. Try: \"mute newsletters\", \"favourite maya@acme.com\", \"boost invoice by 25\" or \"move emails from stripe.com to Receipts\".") }
+            r.source = "agent"; let what = addRule(r); return ok("\(what) (\(r.id.uuidString)): \(r.actionText) \(r.title)")
         case "delete_rule": guard let s = str("rule_id"), let id = UUID(uuidString: s) else { return fail("Missing rule_id.") }; removeRule(id); return ok("Rule removed.")
         case "draft_reply":
             guard access.canDraft else { return fail("Agent access is read only. The user can change it in Moose → Settings → Agents.") }
