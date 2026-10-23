@@ -2,6 +2,7 @@
 
 import SwiftUI
 import MooseKit
+import AppKit
 
 /// State of the Stack window: a frozen deck of senders, one card at a time. The deck is the unread priority mail, or the mail in one folder.
 @MainActor @Observable
@@ -22,8 +23,15 @@ final class StackModel {
     var reply = ""
     var cc = ""
     var drafting = false
+    /// Passages of the open message the reply refers to, quoted under the reply when sent.
+    var quotes: [String] = []
+    var selection: (text: String, rect: CGRect)?
+    let dictation = Dictation()
+    var tidying = false
+    private(set) var briefs: [String: MailBrief] = [:]
     private var handled = Set<String>()
     private var bodies: [String: String] = [:]
+    private var cleaned: [String: CleanedMail] = [:]
     private let mail = MailModel.shared
 
     func rebuild() {
@@ -31,7 +39,7 @@ final class StackModel {
         case .priority: items = Deck.build(mail.scored, favourites: mail.favourites)
         case .folder(let f): items = Folders.deck(mail.folderMessages[Folders.key(f)] ?? [], favourites: mail.favourites)
         }
-        handled = []; bodies = [:]; index = 0; reset()
+        handled = []; bodies = [:]; cleaned = [:]; briefs = [:]; index = 0; reset()
     }
 
     /// Switches what the deck is made of. A folder is read from Gmail first when it has not been opened yet.
@@ -62,8 +70,8 @@ final class StackModel {
     func folderRenamed(from old: String, to new: String) { if folder.map({ Folders.key($0) == Folders.key(old) }) == true { source = .folder(new) } }
     func folderDeleted(_ name: String) { if folder.map({ Folders.key($0) == Folders.key(name) }) == true { setSource(.priority) } }
 
-    func release() { items = []; handled = []; bodies = [:]; reply = ""; cc = ""; source = .priority; loading = false; reset() }
-    private func reset() { mode = .browse; showAll = false; scope = .sender }
+    func release() { items = []; handled = []; bodies = [:]; cleaned = [:]; briefs = [:]; reply = ""; cc = ""; source = .priority; loading = false; reset() }
+    private func reset() { dictation.cancel(); mode = .browse; showAll = false; scope = .sender; quotes = []; selection = nil }
 
     private var pool: [MailMessage] {
         switch source {
@@ -81,13 +89,24 @@ final class StackModel {
     }
     var senderCount: Int { item?.remaining(present: present, handled: handled).count ?? 0 }
     var wholeCount: Int { let p = present; return live.reduce(0) { $0 + $1.remaining(present: p, handled: handled).count } }
-    func body(for m: MailMessage) -> String? { bodies[m.id] }
+    func cleaned(for m: MailMessage) -> CleanedMail? { cleaned[m.id] }
+    /// Only longer messages get a brief; a short one is quicker to read than to summarise.
+    func brief(for m: MailMessage) -> MailBrief? { briefs[m.id] }
 
+    /// Loads and tidies the text, then (for longer messages) shows the cached or instant brief at once and asks Claude for a better one.
+    /// Claude only runs if you stay on the card for a moment, so flipping through the stack costs nothing.
     func loadBody(_ m: MailMessage) async {
-        guard bodies[m.id] == nil else { return }
-        let t = await mail.fullText(m)
-        if bodies.count > 12 { bodies.removeAll() }
-        bodies[m.id] = t
+        if cleaned[m.id] == nil {
+            let t = await mail.fullText(m)
+            if bodies.count > 12 { bodies.removeAll(); cleaned.removeAll(); briefs.removeAll() }
+            bodies[m.id] = t; cleaned[m.id] = MailText.clean(t)
+        }
+        guard let c = cleaned[m.id], !c.isShort else { return }
+        if let b = mail.cachedBrief(m.id) { briefs[m.id] = b; return }
+        if briefs[m.id] == nil { briefs[m.id] = MailText.localBrief(c) }
+        try? await Task.sleep(for: .milliseconds(600))
+        guard !Task.isCancelled else { return }
+        do { briefs[m.id] = try await mail.brief(for: m, cleaned: c) } catch { AppLog.error(error, context: "stack brief") }
     }
 
     // MARK: Navigation
@@ -98,11 +117,46 @@ final class StackModel {
 
     func read() { guard let m = message else { return }; mode = .reading; mail.markRead(m) }
 
-    func startReply() {
+    func startReply(autoDraft: Bool = true) {
         guard let m = message else { return }
+        if let s = selection, !quotes.contains(s.text) { quotes.append(s.text) }
+        selection = nil
+        guard mode != .replying else { return }
         mode = .replying; showAll = false; cc = ""
         reply = mail.data.composeDrafts[m.id] ?? ""
-        if reply.isEmpty, ClaudeDrafter.available { draft(.normal) }
+        if autoDraft, reply.isEmpty, ClaudeDrafter.available { draft(.normal) }
+    }
+
+    func addQuote(_ text: String) {
+        if !quotes.contains(text) { quotes.append(text) }
+        selection = nil
+        startReply(autoDraft: false)
+    }
+
+    // MARK: Dictation
+
+    func toggleDictation() {
+        if dictation.active { finishDictation(tidy: false); return }
+        if mode != .replying { startReply(autoDraft: false) }
+        Task { await dictation.start(); if let e = dictation.error { AppModel.shared.show(e, error: true) } }
+    }
+
+    func finishDictation(tidy: Bool) {
+        let heard = dictation.stop()
+        guard !heard.isEmpty else { return }
+        guard tidy else { insert(heard); return }
+        tidying = true
+        Task {
+            defer { tidying = false }
+            do { insert(try await ClaudeDrafter.tidy(heard)) }
+            catch { AppLog.error(error, context: "tidy dictation"); insert(heard) }
+        }
+    }
+
+    private func insert(_ s: String) {
+        let cur = reply.trimmingCharacters(in: .whitespacesAndNewlines)
+        reply = cur.isEmpty ? s : cur + "\n\n" + s
+        if let m = message { mail.setCompose(m.id, reply) }
     }
 
     func draft(_ tone: DraftTone) {
@@ -111,12 +165,12 @@ final class StackModel {
         let extra = reply.trimmingCharacters(in: .whitespacesAndNewlines)
         Task {
             defer { drafting = false }
-            do { reply = try await mail.draftWithClaude(m, tone: tone, extra: extra); mail.setCompose(m.id, reply) }
+            do { reply = try await mail.draftWithClaude(m, tone: tone, extra: extra, quotes: quotes); mail.setCompose(m.id, reply) }
             catch { AppLog.error(error, context: "stack draft"); AppModel.shared.show(UserError.message(for: error, action: "Draft the reply"), error: true) }
         }
     }
 
-    func cancelReply() { mode = .browse }
+    func cancelReply() { dictation.cancel(); mode = .browse }
 
     func toggleReplyAll() {
         guard let m = message else { return }
@@ -129,11 +183,11 @@ final class StackModel {
 
     func send() {
         guard let m = message else { return }
-        let body = reply
+        let body = MailText.withQuotes(reply, quotes: quotes, sender: m.displayName, date: m.date)
         Task {
             do {
                 _ = try await mail.queueReply(to: m, body: body, cc: cc, undoSeconds: 5, byAgent: false)
-                mail.setCompose(m.id, ""); reply = ""; cc = ""; handled.insert(m.id); mode = .browse
+                mail.setCompose(m.id, ""); reply = ""; cc = ""; quotes = []; handled.insert(m.id); mode = .browse
             } catch { AppLog.error(error, context: "stack send"); AppModel.shared.show(UserError.message(for: error, action: "Send the reply"), error: true) }
         }
     }
@@ -354,7 +408,8 @@ struct StackView: View {
                 Button("") { st.applyAll(.markRead) }.keyboardShortcut("u", modifiers: .shift)
                 Button("") { mail.undo() }.keyboardShortcut("z", modifiers: .command)
             }
-            Button("") { if st.mode == .replying { st.cancelReply() } else { st.showAll = false } }.keyboardShortcut(.escape, modifiers: [])
+            Button("") { st.toggleDictation() }.keyboardShortcut("d", modifiers: .control)
+            Button("") { if st.dictation.active { st.dictation.cancel() } else if st.mode == .replying { st.cancelReply() } else { st.showAll = false } }.keyboardShortcut(.escape, modifiers: [])
         }.opacity(0).frame(width: 0, height: 0).allowsHitTesting(false)
     }
 }
@@ -362,7 +417,10 @@ struct StackView: View {
 private struct Card: View {
     let m: MailMessage
     let st: StackModel
-    private var text: String { st.body(for: m) ?? m.snippet }
+    private var cleaned: CleanedMail? { st.cleaned(for: m) }
+    private var paragraphs: [String] { cleaned.map { $0.paragraphs.isEmpty ? [m.snippet] : $0.paragraphs } ?? [m.snippet] }
+    /// What stands in for the text when it is not on screen: the brief's summary, else the first lines.
+    private var recap: String { st.brief(for: m)?.summary ?? MailText.excerpt(paragraphs.joined(separator: " "), 260) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -375,13 +433,21 @@ private struct Card: View {
                 if st.senderCount > 1 { Text("1 of \(st.senderCount)").font(.system(size: 11.5)).foregroundStyle(.secondary) }
                 Text(Fmt.time(m.date)).font(.system(size: 12.5)).foregroundStyle(.secondary)
             }
-            Text(m.subject).font(.system(size: st.mode == .replying ? 16 : 19, weight: .bold)).padding(.top, 8).padding(.bottom, st.mode == .replying ? 8 : 14).fixedSize(horizontal: false, vertical: true)
+            Text(m.subject).font(.system(size: st.mode == .replying ? 16 : 19, weight: .bold)).padding(.top, 8).padding(.bottom, st.mode == .replying ? 8 : 12).fixedSize(horizontal: false, vertical: true)
             if st.mode == .replying { replying } else {
-                ScrollView { Text(text).font(.system(size: 15)).lineSpacing(5).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading) }
-                    .scrollDisabled(st.mode == .browse)
-                    .overlay(alignment: .bottom) {
-                        if st.mode == .browse { LinearGradient(colors: [Theme.card.opacity(0), Theme.card], startPoint: .top, endPoint: .bottom).frame(height: 56).allowsHitTesting(false) }
-                    }
+                if let b = st.brief(for: m) { briefBlock(b).padding(.bottom, 12) }
+                ScrollView {
+                    ZStack(alignment: .topLeading) {
+                        SelectableText(paragraphs: paragraphs, size: 15) { s in st.selection = s.map { ($0.0, $0.1) } }
+                        if let s = st.selection, st.mode == .reading {
+                            QuotePopover(text: s.text, reply: { st.addQuote(s.text) }, done: { st.selection = nil }).offset(x: min(max(0, s.rect.minX), 300), y: s.rect.maxY + 6)
+                        }
+                    }.frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .scrollDisabled(st.mode == .browse)
+                .overlay(alignment: .bottom) {
+                    if st.mode == .browse { LinearGradient(colors: [Theme.card.opacity(0), Theme.card], startPoint: .top, endPoint: .bottom).frame(height: 56).allowsHitTesting(false) }
+                }
             }
         }
         .padding(.horizontal, 26).padding(.vertical, 22)
@@ -391,23 +457,71 @@ private struct Card: View {
         .shadow(color: .black.opacity(0.14), radius: 14, y: 8)
     }
 
+    /// The summary leads the card. In browse mode it also carries the dates and what is asked of you, so a glance is enough.
+    private func briefBlock(_ b: MailBrief) -> some View {
+        VStack(alignment: .leading, spacing: 7) {
+            HStack(alignment: .firstTextBaseline, spacing: 7) {
+                Image(systemName: "sparkles").font(.system(size: 11, weight: .semibold)).foregroundStyle(Theme.accent)
+                Text(b.summary).font(.system(size: 14.5, weight: .semibold)).fixedSize(horizontal: false, vertical: true)
+            }
+            if st.mode == .browse {
+                FlowChips {
+                    if b.urgency == "high" { BriefChip(text: "Urgent", icon: "exclamationmark.circle", warn: true, small: true) }
+                    ForEach(b.dates, id: \.self) { BriefChip(text: $0, icon: "calendar", warn: b.urgency == "high", small: true) }
+                    if !b.replyNeeded { BriefChip(text: "No reply needed", icon: "checkmark", small: true) }
+                }
+                if !b.asks.isEmpty { Text("Asks of you: \(b.asks)").font(.system(size: 12.5)).foregroundStyle(.secondary).lineLimit(2) }
+            }
+        }
+        .padding(11).frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.accentSoft, in: RoundedRectangle(cornerRadius: 10))
+    }
+
     private var replying: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(text).font(.system(size: 14)).foregroundStyle(.secondary).lineLimit(3)
+            Text(recap).font(.system(size: 14)).foregroundStyle(.secondary).lineLimit(3)
+            ForEach(Array(st.quotes.enumerated()), id: \.offset) { i, q in
+                HStack(alignment: .top, spacing: 8) {
+                    Rectangle().fill(Theme.accent).frame(width: 3)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("REFERENCING").font(.system(size: 10.5, weight: .semibold)).tracking(0.6)
+                        Text(MailText.excerpt(q, 200)).font(.system(size: 12.5)).foregroundStyle(.secondary).lineLimit(2)
+                    }
+                    Spacer()
+                    Button { st.quotes.remove(at: i) } label: { Image(systemName: "xmark").font(.system(size: 10)) }.buttonStyle(.plain).foregroundStyle(.secondary).help("Remove this reference")
+                }
+            }
             Divider()
             HStack {
-                Text(st.drafting ? "Claude is writing…" : ClaudeDrafter.available ? "Reply · drafted by Claude in your voice · edit freely" : "Reply").font(.system(size: 12)).foregroundStyle(.secondary)
+                Text(st.drafting ? "Claude is writing…" : ClaudeDrafter.available ? "Reply · drafted in your voice" : "Reply").font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1).fixedSize()
                 Button(st.cc.isEmpty ? "Reply all" : "Just reply") { st.toggleReplyAll() }.buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(Theme.accent)
                 Spacer()
+                Button { st.toggleDictation() } label: { Label(st.dictation.active ? "Stop" : "Dictate", systemImage: "mic") }.buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(Theme.accent).help("Dictate a reply  ⌃D")
                 if ClaudeDrafter.available && !st.drafting {
                     ForEach([DraftTone.shorter, .warmer, .decline, .askForCall], id: \.self) { t in Button(t.label) { st.draft(t) }.buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(Theme.accent) }
                 }
             }
             if !st.cc.isEmpty { Text("Cc: \(st.cc)").font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(2) }
+            if st.dictation.active { dictationBar }
             TextEditor(text: Bindable(st).reply).font(.system(size: 14.5)).scrollContentBackground(.hidden).padding(8).frame(minHeight: 120, maxHeight: 240)
                 .background(Theme.pane, in: RoundedRectangle(cornerRadius: 10)).overlay(RoundedRectangle(cornerRadius: 10).stroke(Theme.accent))
                 .onChange(of: st.reply) { _, v in MailModel.shared.setCompose(m.id, v) }
         }
+    }
+
+    private var dictationBar: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(st.dictation.text.isEmpty ? "Listening…" : st.dictation.text).font(.system(size: 14)).opacity(st.dictation.text.isEmpty ? 0.55 : 1).lineLimit(3)
+            HStack(spacing: 10) {
+                Text(st.tidying ? "Tidying…" : "Listening · on this Mac").font(.system(size: 12)).opacity(0.7)
+                Spacer()
+                Button("Cancel") { st.dictation.cancel() }.buttonStyle(.plain).font(.system(size: 12)).opacity(0.7)
+                if ClaudeDrafter.available { Button("Tidy with Claude") { st.finishDictation(tidy: true) }.buttonStyle(.plain).font(.system(size: 12)) }
+                Button { st.finishDictation(tidy: false) } label: { Text("Done  ⌃D").font(.system(size: 12.5, weight: .semibold)).padding(.horizontal, 10).padding(.vertical, 3).background(Theme.accent, in: RoundedRectangle(cornerRadius: 7)).foregroundStyle(Theme.onAccent) }.buttonStyle(.plain)
+            }
+        }
+        .padding(11).foregroundStyle(Color(nsColor: .windowBackgroundColor))
+        .background(Color(nsColor: .labelColor), in: RoundedRectangle(cornerRadius: 12))
     }
 }
 

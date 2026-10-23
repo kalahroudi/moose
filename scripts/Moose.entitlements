@@ -4,5 +4,7 @@
 <dict>
   <!-- Not sandboxed: the app runs command line tools and replaces its own bundle when updating. -->
   <key>com.apple.security.automation.apple-events</key><true/>
+  <!-- Dictating a reply (hardened runtime needs this to open the microphone). -->
+  <key>com.apple.security.device.audio-input</key><true/>
 </dict>
 </plist>

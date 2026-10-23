@@ -1,0 +1,225 @@
+<!doctype html><html><head><meta charset="utf-8"><title>moose — Reader mockup</title>
+<style>
+*{box-sizing:border-box;margin:0}
+body{font:14px/1.5 -apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif;background:#d9d4cb;padding:48px;color:#222;-webkit-font-smoothing:antialiased}
+h1{font-size:28px;letter-spacing:-.02em}.sub{color:#6b665d;margin:4px 0 8px;max-width:900px}
+h2{font-size:12px;text-transform:uppercase;letter-spacing:.1em;color:#6b665d;margin:40px 0 6px}
+.cap{color:#6b665d;font-size:13px;margin-bottom:14px;max-width:900px}
+.row{display:flex;gap:28px;flex-wrap:wrap}
+.dark{--bg:#17201d;--card:#1e2926;--c2:#1a2421;--hair:#2a3733;--tx:#e8e4da;--mu:#8d9a94;--ac:#f0b26b;--onac:#2a1a05;--dng:#e57c6a;--ok:#7fc29b;--hl:rgba(240,178,107,.16)}
+.light{--bg:#fbf9f5;--card:#fff;--c2:#f3efe7;--hair:#e4ded3;--tx:#25221d;--mu:#8a8478;--ac:#b8651b;--onac:#fff;--dng:#c0452f;--ok:#2f8a57;--hl:rgba(184,101,27,.14)}
+.win{position:relative;width:900px;height:640px;background:var(--bg);color:var(--tx);border-radius:12px;box-shadow:0 0 0 .5px rgba(0,0,0,.4),0 24px 60px rgba(0,0,0,.3);overflow:hidden;display:flex;flex-direction:column}
+.tb{height:38px;display:flex;align-items:center;padding:0 14px;gap:8px;flex:none}
+.dot{width:12px;height:12px;border-radius:50%;background:#ff5f57}.dot:nth-child(2){background:#febc2e}.dot:nth-child(3){background:#28c840}
+/* header */
+.hd{display:flex;align-items:flex-start;gap:12px;padding:6px 22px 12px;border-bottom:1px solid var(--hair);flex:none}
+.hd h3{font-size:19px;letter-spacing:-.015em;line-height:1.25}.hd .m{color:var(--mu);font-size:12.5px;margin-top:2px}
+.tools{margin-left:auto;display:flex;gap:6px;flex:none}
+.ib{border:1px solid var(--hair);background:var(--card);border-radius:8px;min-width:30px;height:30px;padding:0 10px;display:flex;align-items:center;justify-content:center;font-size:12.5px;color:var(--tx);white-space:nowrap}
+.ib.on{border-color:var(--ac);color:var(--ac)}
+kbd{font:11px ui-monospace,Menlo,monospace;opacity:.55;font-weight:400;margin-left:6px}
+/* scroller */
+.sc{flex:1;min-height:0;overflow:hidden;padding:16px 22px;position:relative}
+.fade{position:absolute;left:0;right:0;bottom:0;height:60px;background:linear-gradient(transparent,var(--bg));pointer-events:none}
+/* brief */
+.brief{border:1px solid var(--hair);border-left:3px solid var(--ac);background:var(--card);border-radius:12px;padding:14px 16px 12px}
+.bh{display:flex;align-items:center;gap:8px;font-size:11.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--ac);font-weight:700}
+.bh span.mu{margin-left:auto;text-transform:none;letter-spacing:0;font-weight:400;color:var(--mu)}
+.one{font-size:16.5px;font-weight:650;letter-spacing:-.01em;margin:8px 0 8px;line-height:1.35}
+.pts{list-style:none;padding:0;display:flex;flex-direction:column;gap:5px;font-size:13.5px}
+.pts li{display:flex;gap:9px}.pts li:before{content:"";width:5px;height:5px;border-radius:50%;background:var(--mu);margin-top:8px;flex:none}
+.chips{display:flex;gap:7px;flex-wrap:wrap;margin-top:12px}
+.chip{border:1px solid var(--hair);background:var(--c2);border-radius:999px;padding:3px 10px;font-size:12px;display:flex;gap:6px;align-items:center}
+.chip b{font-weight:600}.chip.warn{border-color:var(--ac);color:var(--ac)}.chip.act{background:var(--ac);color:var(--onac);border-color:var(--ac);font-weight:600}
+.ask{margin-top:12px;padding-top:10px;border-top:1px dashed var(--hair);font-size:13px;color:var(--mu)}.ask b{color:var(--tx)}
+/* quick replies */
+.qr{display:flex;gap:7px;flex-wrap:wrap;margin-top:14px;align-items:center}.qr small{color:var(--mu);font-size:12px;margin-right:2px}
+.qb{border:1px solid var(--hair);background:var(--card);border-radius:9px;padding:6px 12px;font-size:13px}.qb.p{border-color:var(--ac);color:var(--ac);font-weight:600}
+/* details */
+.toggle{display:flex;align-items:center;gap:10px;margin:18px 0 8px;color:var(--mu);font-size:12.5px}
+.toggle:after{content:"";flex:1;height:1px;background:var(--hair)}.toggle b{color:var(--tx);font-weight:600}
+.body{font-size:14.5px;line-height:1.65;max-width:680px}
+.body p{margin:0 0 11px}
+.body .lk{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--hair);background:var(--c2);border-radius:7px;padding:1px 8px;font-size:12.5px;color:var(--ac);vertical-align:1px}
+.body .lk i{font-style:normal;color:var(--mu);font-size:11.5px}
+.body mark{background:var(--hl);color:inherit;border-radius:3px;padding:1px 0}
+.fold{display:inline-flex;gap:8px;align-items:center;border:1px dashed var(--hair);border-radius:8px;padding:4px 11px;color:var(--mu);font-size:12.5px;margin:2px 0 10px}
+.raw{font:12px/1.5 ui-monospace,Menlo,monospace;color:var(--mu);border:1px solid var(--hair);background:var(--c2);border-radius:8px;padding:10px 12px;white-space:pre-wrap;word-break:break-all}
+/* selection popover */
+.sel{position:absolute;z-index:6;background:var(--tx);color:var(--bg);border-radius:9px;padding:5px;display:flex;gap:2px;box-shadow:0 8px 24px rgba(0,0,0,.3);font-size:12.5px}
+.sel span{padding:4px 10px;border-radius:6px}.sel span.f{background:var(--ac);color:var(--onac);font-weight:600}.sel kbd{opacity:.6}
+/* dock */
+.dock{flex:none;border-top:1px solid var(--hair);background:var(--bg);padding:10px 22px 14px;position:relative}
+.bar{display:flex;align-items:center;gap:10px;border:1px solid var(--hair);background:var(--card);border-radius:12px;padding:9px 12px;color:var(--mu);box-shadow:0 4px 14px rgba(0,0,0,.08)}
+.bar .ph{flex:1}.bar .mic{width:28px;height:28px;border-radius:50%;background:var(--c2);display:flex;align-items:center;justify-content:center;color:var(--tx)}
+.bar .go{background:var(--ac);color:var(--onac);border-radius:8px;padding:5px 12px;font-weight:600;font-size:13px}
+.comp{border:1px solid var(--ac);background:var(--card);border-radius:12px;box-shadow:0 -6px 24px rgba(0,0,0,.12);overflow:hidden}
+.ch{display:flex;gap:8px;align-items:center;padding:8px 12px;border-bottom:1px solid var(--hair);font-size:12.5px;color:var(--mu)}
+.ch b{color:var(--ac)}.ch .sp{margin-left:auto;display:flex;gap:6px}
+.ref{margin:10px 12px 0;border-left:3px solid var(--ac);background:var(--hl);border-radius:0 8px 8px 0;padding:6px 10px;font-size:12.5px;color:var(--mu);display:flex;gap:8px}
+.ref q{quotes:none;flex:1}.ref b{color:var(--tx);font-weight:600;font-size:11.5px;display:block;text-transform:uppercase;letter-spacing:.06em}.ref .x{color:var(--mu)}
+.cb{padding:10px 14px;font-size:14px;line-height:1.6;min-height:70px}
+.cb .cur{display:inline-block;width:1.5px;height:15px;background:var(--ac);vertical-align:-3px}
+.cb .dim{color:var(--mu)}
+.cf{display:flex;gap:8px;align-items:center;padding:8px 12px;border-top:1px solid var(--hair)}.cf .sp{margin-left:auto;display:flex;gap:6px;align-items:center}
+.send{background:var(--ac);color:var(--onac);border-radius:8px;padding:6px 14px;font-weight:600;font-size:13px}
+.pillb{border:1px solid var(--hair);border-radius:8px;padding:4px 10px;font-size:12.5px;background:var(--card);color:var(--tx)}
+/* dictation float */
+.float{position:absolute;left:50%;transform:translateX(-50%);bottom:22px;z-index:7;background:var(--tx);color:var(--bg);border-radius:16px;box-shadow:0 14px 40px rgba(0,0,0,.4);width:560px;padding:12px 14px;display:flex;flex-direction:column;gap:8px}
+.float .tr{font-size:14.5px;line-height:1.5}.float .tr em{font-style:normal;opacity:.55}
+.float .st{display:flex;align-items:center;gap:10px;font-size:12px}.float .st .sp{margin-left:auto;display:flex;gap:8px;align-items:center}
+.float .wave{display:flex;gap:2px;align-items:center;height:16px}.float .wave i{width:3px;background:var(--ac);border-radius:2px;display:block}
+.float .send{padding:5px 12px}
+/* split */
+.split{display:flex;flex:1;min-height:0}
+.split .l{flex:1;min-width:0;display:flex;flex-direction:column;border-right:1px solid var(--hair)}
+.split .r{width:400px;display:flex;flex-direction:column;padding:14px 16px;gap:10px;background:var(--c2)}
+.split .r .comp{flex:1;display:flex;flex-direction:column}.split .r .cb{flex:1}
+/* before/after */
+.ba{display:flex;gap:20px;align-items:stretch}.ba>div{flex:1}
+.pan{background:var(--card);border:1px solid var(--hair);border-radius:12px;padding:14px 16px;color:var(--tx);height:100%}
+.pan h4{font-size:11.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--mu);margin-bottom:8px}
+.pan .raw{max-height:none}
+.note{background:#fbf9f5;border-radius:12px;padding:16px 22px;max-width:1000px;color:#25221d}
+.note li{margin:5px 0 5px 18px}
+.rules{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;max-width:1000px}
+.rules div{background:#fbf9f5;border-radius:10px;padding:12px 14px;font-size:13px;color:#25221d}.rules b{display:block;margin-bottom:3px}
+</style></head><body>
+<h1>moose — Reader mockup (v1)</h1>
+<div class="sub">The email view, rebuilt around three ideas: <b>brief first</b> (an agent tells you what this is and what it wants from you), <b>clean details on demand</b> (whitespace, tracking URLs and footers tamed), and <b>reply always within reach</b> (docked, never below the fold). All names and content below are invented. Static mockup, not the build.</div>
+
+<h2>1 · Default: the brief (light)</h2>
+<div class="cap">Opens instantly on the local text, the brief fills in a moment later (cached per message, so re-opening is instant). Nothing to scroll: summary, what is asked of you, dates and links as chips, one-tap quick replies, and the reply bar is docked at the bottom.</div>
+<div class="win light">
+ <div class="tb"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>
+ <div class="hd"><div><h3>100 days to go: submit your tax return now</h3><div class="m">Revenue Services Help · me@example.com · 13:33 · 1 message</div></div>
+  <div class="tools"><div class="ib">⌃</div><div class="ib">⌄</div><div class="ib">★</div><div class="ib">🔕</div><div class="ib">Archive</div><div class="ib">Back</div></div></div>
+ <div class="sc">
+  <div class="brief">
+   <div class="bh">✦ Brief <span class="mu">by Claude · on this Mac · 0.8s</span></div>
+   <div class="one">A reminder that your online tax return for the 2026 tax year is due in 100 days. Nothing is needed if you already filed.</div>
+   <ul class="pts"><li>You can file now, you don't have to wait until the deadline.</li><li>If you've already filed, or told them you no longer need to, ignore this.</li><li>Automated campaign mail, no personal details about you.</li></ul>
+   <div class="chips"><div class="chip warn">⏱ <b>Deadline</b> in 100 days</div><div class="chip">📅 <b>Date</b> 31 Jan</div><div class="chip">🔗 <b>1 real link</b> · 1 tracker hidden</div><div class="chip">🏷 Automated · low urgency</div><div class="chip act">Remind me in 90 days</div></div>
+   <div class="ask"><b>Asks of you:</b> file your return (optional if already done). <b>Reply needed:</b> no.</div>
+  </div>
+  <div class="qr"><small>Quick:</small><div class="qb p">Archive &amp; remind me <kbd>E</kbd></div><div class="qb">Mute this sender <kbd>M</kbd></div><div class="qb">Forward to accountant <kbd>F</kbd></div></div>
+  <div class="toggle"><b>Details</b> original text, cleaned · 11 blank lines removed · footer folded <div class="ib" style="margin-left:6px">Show details <kbd>D</kbd></div></div>
+  <div class="fade"></div>
+ </div>
+ <div class="dock"><div class="bar"><span class="ph">Reply, or just start typing…</span><span class="pillb">Draft with Claude <kbd>⇧R</kbd></span><div class="mic">🎙</div><span class="go">Reply <kbd style="opacity:.7">R</kbd></span></div></div>
+</div>
+
+<h2>2 · Details expanded: reading with the reply docked (dark)</h2>
+<div class="cap">Details open under the brief, which collapses to a one-line strip, so there is room for the text. The dock stays pinned the whole time, so scrolling a long email never hides it. Long URLs become labelled link chips, runs of blank lines collapse, and boilerplate (unsubscribe, legal, "view in browser") folds into one expandable line. A "Raw" toggle shows the untouched text when you need it.</div>
+<div class="win dark">
+ <div class="tb"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>
+ <div class="hd"><div><h3>100 days to go: submit your tax return now</h3><div class="m">Revenue Services Help · me@example.com · 13:33</div></div>
+  <div class="tools"><div class="ib on">Details <kbd>D</kbd></div><div class="ib">Raw</div><div class="ib">⌃</div><div class="ib">⌄</div><div class="ib">Back</div></div></div>
+ <div class="sc">
+  <div class="brief" style="padding:9px 14px"><div class="bh">✦ Brief <span style="text-transform:none;letter-spacing:0;font-weight:500;color:var(--tx);margin-left:6px">Tax return due in 100 days. Nothing needed if already filed.</span><span class="mu">expand ⌄</span></div></div>
+  <div class="toggle" style="margin-top:14px"><b>Details</b> 11 blank lines removed</div>
+  <div class="body">
+   <p><span class="lk">🔗 View in browser <i>revenue-mail.example</i></span></p>
+   <p>Dear customer,</p>
+   <p>You now have <mark>100 days left</mark> until the deadline to submit your online tax return for the 2025 to 2026 tax year.</p>
+   <p>If you've already submitted your tax return, or you've told us you no longer need to send one, thank you. You don't need to do anything else.</p>
+   <p>File now and get it off your to-do list. You don't have to wait until <mark>31 January</mark>.</p>
+   <p><span class="lk">🔗 File your return <i>gov.example/self-assessment</i></span></p>
+   <span class="fold">▸ Footer folded · unsubscribe, legal, 3 tracking links <kbd>⇧D</kbd></span>
+  </div>
+  <div class="fade"></div>
+ </div>
+ <div class="dock"><div class="bar"><span class="ph">Reply to Revenue Services Help…</span><span class="pillb">Draft with Claude</span><div class="mic">🎙</div><span class="go">Reply <kbd style="opacity:.7">R</kbd></span></div></div>
+</div>
+
+<h2>3 · Inline reply with a reference (light)</h2>
+<div class="cap">Select any text in the email and a small popover offers "Reply to this". The selection is attached as a quote chip above the reply box, and Claude can address it specifically. The composer opens in the dock (it grows upward, with Esc to collapse), and the email stays visible and scrollable above it. Several references can be added; each is sent as a proper quoted block.</div>
+<div class="win light">
+ <div class="tb"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>
+ <div class="hd"><div><h3>Contract redlines: can you sign off by Friday?</h3><div class="m">Maya Chen · me@example.com · 9:41</div></div>
+  <div class="tools"><div class="ib on">Details</div><div class="ib">Raw</div><div class="ib">⌃</div><div class="ib">⌄</div><div class="ib">Back</div></div></div>
+ <div class="sc">
+  <div class="brief" style="padding:9px 14px"><div class="bh">✦ Brief <span style="text-transform:none;letter-spacing:0;font-weight:500;color:var(--tx);margin-left:6px">Wants sign-off by Fri. Two questions open: signatory name, renewal term.</span><span class="mu">expand ⌄</span></div></div>
+  <div class="toggle" style="margin-top:14px"><b>Details</b></div>
+  <div class="body" style="position:relative">
+   <p>Hi,</p>
+   <p>I've addressed Legal's note on §4 and the termination clause is now 30 days. The payment schedule in §7 is unchanged.</p>
+   <p style="position:relative"><mark>Two small things I still need from you: the signatory name for the cover page, and whether we keep the 12-month renewal term.</mark>
+    <span class="sel" style="left:330px;top:54px"><span class="f">Reply to this <kbd>R</kbd></span><span>Copy</span><span>Ask Claude <kbd>⌘K</kbd></span></span></p>
+   <p>Can you sign off by Friday so we can send it over? Happy to hop on a call if that's easier.</p><p>Thanks,<br>Maya</p>
+  </div>
+ </div>
+ <div class="dock" style="padding-top:8px"><div class="comp">
+  <div class="ch"><b>Reply</b> to Maya Chen <span>·</span> <span>Reply all (2 more)</span><div class="sp"><span class="pillb">Draft with Claude</span><span class="pillb">Shorter</span><span class="pillb">Warmer</span></div></div>
+  <div class="ref"><q><b>Referencing</b>Two small things I still need from you: the signatory name for the cover page, and whether we keep the 12-month renewal term.</q><span class="x">✕</span></div>
+  <div class="cb">Hi Maya, the signatory is Alex Rivera, Director. Yes, let's keep the 12-month renewal.<span class="cur"></span></div>
+  <div class="cf"><span class="pillb">🎙 Dictate <kbd>⌃D</kbd></span><span class="pillb">📎</span><span class="dim" style="color:var(--mu);font-size:12px">Saved as you type</span><div class="sp"><span class="pillb">Save draft</span><span class="send">Send <kbd style="opacity:.7">⌘↩</kbd></span></div></div>
+ </div></div>
+</div>
+
+<h2>4 · Dictation: floating, read while you speak (dark)</h2>
+<div class="cap">⌃D (or the mic) opens a floating dictation pill over the email instead of a big composer. It stays out of the way, so you read and talk at once. Speech is transcribed on this Mac (the system dictation engine), shown live, and on stop Claude can tidy it into a proper reply. The pill is draggable. The reply dock updates behind it.</div>
+<div class="win dark">
+ <div class="tb"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>
+ <div class="hd"><div><h3>Contract redlines: can you sign off by Friday?</h3><div class="m">Maya Chen · me@example.com · 9:41</div></div>
+  <div class="tools"><div class="ib on">Details</div><div class="ib">⌃</div><div class="ib">⌄</div><div class="ib">Back</div></div></div>
+ <div class="sc">
+  <div class="brief" style="padding:9px 14px"><div class="bh">✦ Brief <span style="text-transform:none;letter-spacing:0;font-weight:500;color:var(--tx);margin-left:6px">Wants sign-off by Fri. Two questions open.</span><span class="mu">expand ⌄</span></div></div>
+  <div class="toggle" style="margin-top:14px"><b>Details</b></div>
+  <div class="body">
+   <p>Hi,</p><p>I've addressed Legal's note on §4 and the termination clause is now 30 days. The payment schedule in §7 is unchanged.</p>
+   <p>Two small things I still need from you: the signatory name for the cover page, and whether we keep the 12-month renewal term.</p>
+   <p>Can you sign off by Friday so we can send it over? Happy to hop on a call if that's easier.</p><p>Thanks,<br>Maya</p>
+  </div>
+  <div class="fade"></div>
+ </div>
+ <div class="dock"><div class="bar"><span class="ph">Reply to Maya Chen…</span><div class="mic" style="background:var(--ac);color:var(--onac)">🎙</div><span class="go">Reply</span></div></div>
+ <div class="float">
+  <div class="tr">Hi Maya, thanks for the update. Thirty days works for me. The signatory is Alex Rivera <em>and I'd like to keep the twelve month…</em></div>
+  <div class="st"><div class="wave"><i style="height:5px"></i><i style="height:11px"></i><i style="height:16px"></i><i style="height:8px"></i><i style="height:13px"></i><i style="height:6px"></i><i style="height:10px"></i></div><span>Listening · on this Mac</span>
+   <div class="sp"><span style="opacity:.6">Esc cancel</span><span class="pillb" style="background:transparent;color:inherit;border-color:rgba(128,128,128,.4)">Tidy with Claude</span><span class="send">Done <kbd style="opacity:.7">↩</kbd></span></div></div>
+ </div>
+</div>
+
+<h2>5 · What “cleaned” means (before / after, light)</h2>
+<div class="cap">Today the text view prints everything the HTML-stripper leaves behind. The cleaner is pure, local and unit tested, so it costs nothing and shows instantly before the brief arrives.</div>
+<div class="win light" style="width:1000px;height:auto;padding:0 22px 22px">
+ <div class="tb" style="margin:0 -22px 8px"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>
+ <div class="ba">
+  <div><div class="pan"><h4>Raw text today · 40+ lines</h4><div class="raw">https://mail.example/seeemailinfull/EmailServlet?campaignkw=notrack&amp;tid=cc-0_1792758791602004551&amp;signature=5C168635A64C09291EFAABDE6DD2A3D9
+
+
+
+Dear customer,
+
+You now have 100
+
+
+days left until the deadline to submit your online tax return for the 2025
+
+
+to
+
+
+2026 tax year.
+…</div></div></div>
+  <div><div class="pan"><h4>Cleaned · 5 lines</h4><div class="body" style="font-size:13.5px"><p><span class="lk">🔗 View in browser <i>mail.example</i></span></p><p>Dear customer,</p><p>You now have 100 days left until the deadline to submit your online tax return for the 2025 to 2026 tax year.</p><span class="fold">▸ Footer folded · 3 links</span></div></div></div>
+ </div>
+</div>
+
+<h2>Decisions &amp; how it works</h2>
+<div class="rules">
+ <div><b>Cleaning (local, instant)</b>Collapse runs of blank lines to one; re-join lines the HTML stripper split mid-sentence (single newline between lowercase fragments becomes a space); long or tracking URLs become a labelled chip showing only the domain, full URL on hover and copy; fold footer boilerplate (unsubscribe, "view in browser", legal, signatures). Raw toggle always available.</div>
+ <div><b>Brief (agent, cached)</b>Runs through your own Claude Code CLI like drafting does, only when you open a message, never in bulk. Returns: one-line summary, up to 3 points, who asks what of you, dates, links, "reply needed", urgency. Cached by message id on this Mac, so re-opening is free. If no agent is installed the local summary (first sentence plus detected dates and links) shows instead.</div>
+ <div><b>Reply dock</b>Always pinned. Collapsed bar → docked composer (R) → optional wide split on big windows. Draft is saved as you type, as today. Quote references from selection; Reply all, tones and Draft with Claude stay. Esc collapses without losing the draft.</div>
+ <div><b>Dictation</b>Floating pill using the system speech engine, on-device where available. Needs microphone and speech permission, requested on first use with a plain explanation. Optional "Tidy with Claude" keeps your meaning and fixes punctuation.</div>
+ <div><b>Speed</b>Open shows cleaned local text in the same frame, brief streams in after. No web views, no images. Brief and cleaned text are computed once and cached, and the dock is a fixed-height bar so scrolling never reflows.</div>
+ <div><b>Agents (MCP)</b>Every new feature is exposed over MCP: <code>get_brief</code> (cached brief for a message), <code>get_clean_text</code>, and <code>draft_reply</code> gains <code>quote</code> (the referenced passage). Sends still need your approval.</div>
+</div>
+<div style="height:30px"></div>
+<div class="note"><b>Decisions</b><ul>
+<li><b>Brief position:</b> full size on open; collapses to a one-line strip once details are open (click to re-expand). The text gets the room.</li>
+<li><b>When to brief:</b> only for messages over about 60 words or 5 cleaned lines, generated on open and cached. Short messages show the text directly, with a "Brief" button to force one.</li>
+<li><b>Dictation:</b> on-device system dictation only. Instant, free, no model download. "Tidy with Claude" covers cleanup. A Whisper option can come later if needed.</li>
+</ul></div>
+</body></html>

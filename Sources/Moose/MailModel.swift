@@ -39,6 +39,9 @@ final class MailModel {
     var lastSync: Date? { data.syncedAt.values.max() }
 
     private let store = DataStore()
+    private let briefStore = BriefStore()
+    private var briefs: [String: MailBrief] = [:]
+    private var briefsLoaded = false
     private var clients: [String: GmailClient] = [:]
     private var saveTask: Task<Void, Never>?
     private var sentSamples: [String] = []
@@ -294,6 +297,7 @@ final class MailModel {
     private func folderKey(containing id: String) -> String? { folderMessages.first { $0.value.contains { $0.id == id } }?.key }
 
     func fullText(_ m: MailMessage) async -> String {
+        if demo { return Demo.bodies[m.id] ?? m.snippet }
         do { return try await gmail(m.account)?.fullText(m.id) ?? m.snippet } catch { AppLog.error(error, context: "read message"); return m.snippet }
     }
 
@@ -583,9 +587,32 @@ final class MailModel {
         if mode == .toInbox { await sync() }
     }
 
+    // MARK: Reading: cleaned text and briefs
+
+    func cleanedText(_ m: MailMessage) async -> CleanedMail { MailText.clean(await fullText(m)) }
+
+    func cachedBrief(_ id: String) -> MailBrief? {
+        if !briefsLoaded { briefsLoaded = true; if !demo { briefs = briefStore.load() } }
+        return briefs[id]
+    }
+
+    /// One brief per message, made only when asked for (opening a longer message), then kept on this Mac.
+    func brief(for m: MailMessage, cleaned: CleanedMail, force: Bool = false) async throws -> MailBrief {
+        if !force, let b = cachedBrief(m.id) { return b }
+        if demo { return Demo.briefs[m.id] ?? MailText.localBrief(cleaned) }
+        if !ClaudeDrafter.available { return MailText.localBrief(cleaned) }
+        let thread = "From: \(m.displayName) <\(m.fromEmail)>\nSubject: \(m.subject)\n\n\(cleaned.plain)"
+        var b = try await ClaudeDrafter.brief(thread: thread)
+        if b.dates.isEmpty { b.dates = MailText.detectDates(cleaned.plain) }
+        briefs[m.id] = b
+        try? briefStore.save(briefs)
+        return b
+    }
+
     // MARK: Claude drafting and sending
 
-    func draftWithClaude(_ m: MailMessage, tone: DraftTone, extra: String = "") async throws -> String {
+    func draftWithClaude(_ m: MailMessage, tone: DraftTone, extra: String = "", quotes: [String] = []) async throws -> String {
+        let extra = quotes.isEmpty ? extra : (extra.isEmpty ? "" : extra + "\n\n") + "The user is replying to these passages in particular, so address them directly:\n" + quotes.map { "\"" + MailText.excerpt($0, 600) + "\"" }.joined(separator: "\n")
         let text = await fullText(m)
         if sentSamples.isEmpty, let g = gmail(m.account) { sentSamples = await g.sentSamples() }
         let thread = "From: \(m.displayName) <\(m.fromEmail)>\nSubject: \(m.subject)\n\n\(text)"
@@ -701,6 +728,15 @@ final class MailModel {
             guard let id = str("message_id"), let m = message(id) else { return fail("Unknown message_id. Use list_stacks to find ids.") }
             let body = await fullText(m)
             return ok("From: \(m.displayName) <\(m.fromEmail)>\nAccount: \(m.account)\nSubject: \(m.subject)\nDate: \(m.date.formatted())\n\n\(MailText.excerpt(body, 6000).isEmpty ? m.snippet : String(body.prefix(6000)))")
+        case "get_clean_text":
+            guard let id = str("message_id"), let m = message(id) else { return fail("Unknown message_id. Use list_stacks to find ids.") }
+            let c = await cleanedText(m)
+            return ok("From: \(m.displayName) <\(m.fromEmail)>\nSubject: \(m.subject)\n\n\(String(c.plain.prefix(6000)))\(c.footer.isEmpty ? "" : "\n\n[footer folded: \(c.footer.count) blocks]")\(c.links.isEmpty ? "" : "\n\nLinks:\n" + c.links.prefix(10).map { "- \($0.label)\($0.tracker ? " (tracking)" : ""): \($0.url)" }.joined(separator: "\n"))")
+        case "get_brief":
+            guard let id = str("message_id"), let m = message(id) else { return fail("Unknown message_id. Use list_stacks to find ids.") }
+            let c = await cleanedText(m)
+            do { return ok(try await brief(for: m, cleaned: c, force: (a["refresh"] as? Bool) == true).text) }
+            catch { AppLog.error(error, context: "agent brief"); return fail((error as? UserFacingError)?.message ?? "Couldn't write the brief.") }
         case "archive_many", "trash_many":
             guard let ids = a["message_ids"] as? [String], !ids.isEmpty else { return fail("Missing message_ids.") }
             let groups = located(Array(ids.prefix(500)))
@@ -797,8 +833,9 @@ final class MailModel {
             do {
                 let cc = (a["reply_all"] as? Bool) == true ? try await replyAllCc(for: m) : ""
                 let body: String
-                if let b = str("body") { body = b } else { body = try await draftWithClaude(m, tone: DraftTone(rawValue: str("tone") ?? "") ?? .normal, extra: str("guidance") ?? "") }
-                let d = try await saveDraftOnly(to: m, body: body, cc: cc)
+                if let b = str("body") { body = b } else { body = try await draftWithClaude(m, tone: DraftTone(rawValue: str("tone") ?? "") ?? .normal, extra: str("guidance") ?? "", quotes: str("quote").map { [$0] } ?? []) }
+                let quoted = str("quote").map { MailText.withQuotes(body, quotes: [$0], sender: m.displayName, date: m.date) } ?? body
+                let d = try await saveDraftOnly(to: m, body: quoted, cc: cc)
                 return ok("Draft saved in Gmail (draft_id \(d))\(cc.isEmpty ? "" : ", Cc: \(cc)"):\n\n\(body)")
             } catch { AppLog.error(error, context: "agent draft"); return fail((error as? UserFacingError)?.message ?? "Couldn't write the draft.") }
         case "send_reply":

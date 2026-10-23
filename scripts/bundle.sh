@@ -43,6 +43,8 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>MooseRepo</key><string>$REPO</string>
   <key>MooseBranch</key><string>$BRANCH</string>
   <key>NSHighResolutionCapable</key><true/>
+  <key>NSMicrophoneUsageDescription</key><string>Moose listens only while you dictate a reply. Audio is turned into text on this Mac and never stored or sent.</string>
+  <key>NSSpeechRecognitionUsageDescription</key><string>Moose turns your dictated reply into text on this Mac, using the system's on-device speech recognition.</string>
   <key>LSApplicationCategoryType</key><string>public.app-category.productivity</string>
 </dict>
 </plist>
