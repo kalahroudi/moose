@@ -50,11 +50,12 @@ public enum Priority {
         if m.subject.lowercased().hasPrefix("re:") { add(6, "in a reply thread") }
 
         var muted = bucket
-        for rule in ctx.rules where rule.enabled && rule.matches(m) {
+        for rule in ctx.rules where rule.isActive(at: ctx.now) && rule.matches(m) {
             switch rule.action {
             case .favourite: add(40, "rule: \(rule.title)")
             case .boost(let n): add(n, "rule: \(rule.title)")
             case .mute: muted = .rule; add(-50, "muted: \(rule.title)")
+            case .file: break   // filing happens in Gmail (see MailModel); it does not change the score
             }
         }
         // A favourite is never auto-muted by headers; only an explicit rule can silence them.

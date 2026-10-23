@@ -10,7 +10,7 @@ struct HelpPane: View {
         ("Priority score", "0–100, worked out on your Mac from: favourites, people you write to, questions, deadlines, money, security notices, unread and recent. The reason is shown next to each stack."),
         ("Favourite", "A sender that always ranks high and is never auto-muted."),
         ("Muted", "Newsletters, promos and automated mail. Muted mail is hidden from Priority but never deleted; review it any time."),
-        ("Routing", "Rules in plain English: favourite someone, or boost mail about a topic."),
+        ("Routing", "Rules in plain English: favourite someone, boost a topic, mute for a while, or file mail into a folder (a Gmail label) like “move emails from cassiobury school to Cassiobury School”."),
         ("Agent access", "How much an AI agent connected over MCP may do. Read only, Draft & ask (you approve every send) or Full access (with a short undo window)."),
         ("Google client", "A sign-in key you create once in your own Google Cloud account. Moose is open source and ships none, so no one else ever sees your mail."),
         ("MCP", "Model Context Protocol: the standard way AI agents such as Claude Code use apps. Moose ships its own MCP server."),

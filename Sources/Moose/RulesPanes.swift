@@ -12,16 +12,16 @@ struct RoutingPane: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            PaneHeader(title: "Routing", subtitle: "Plain-language rules. Moose scores the rest on its own.")
+            PaneHeader(title: "Routing", subtitle: "Plain-language rules: favourite, boost or file mail into a folder. Moose scores the rest on its own.")
             ScrollView {
                 VStack(alignment: .leading, spacing: 10) {
-                    RuleInput(text: $text, hint: $hint, placeholder: "favourite maya@acme.com   ·   boost invoice, payment by 25")
+                    RuleInput(text: $text, hint: $hint, placeholder: "move emails from cassiobury school to Cassiobury School   ·   favourite maya@acme.com", examples: ["move emails from stripe.com to Receipts", "favourite maya@acme.com", "boost invoice, payment by 25"])
                     if !mail.favourites.isEmpty {
                         RuleCard(symbol: "star.fill", title: "from " + mail.data.favourites.sorted().joined(separator: ", "), action: "always Priority", meta: "favourites · \(mail.favourites.count)", onDelete: nil, enabled: nil)
                     }
                     ForEach(rules) { r in RuleCard(rule: r) }
                     if rules.isEmpty && mail.favourites.isEmpty {
-                        Text("No rules yet. Star a sender, or describe a rule above.").font(.system(size: 12.5)).foregroundStyle(.secondary).padding(.top, 20).frame(maxWidth: .infinity)
+                        Text("No rules yet. Star a sender, or describe a rule above, like “move emails from cassiobury school to Cassiobury School”.").font(.system(size: 12.5)).foregroundStyle(.secondary).padding(.top, 20).frame(maxWidth: .infinity)
                     }
                 }.padding(16)
             }
@@ -40,7 +40,7 @@ struct MutingPane: View {
             PaneHeader(title: "Muting", subtitle: "Noise-free by default: newsletters, promos and automated mail are muted, never deleted.")
             ScrollView {
                 VStack(alignment: .leading, spacing: 10) {
-                    RuleInput(text: $text, hint: $hint, placeholder: "mute newsletters, promos   ·   mute from news@club.com")
+                    RuleInput(text: $text, hint: $hint, placeholder: "mute newsletters, promos   ·   mute from news@club.com for 7 days", examples: ["mute news@club.com for a week", "mute newsletters, promos", "mute @shoply.com"])
                     HStack(spacing: 8) {
                         ForEach(mail.mutedSummary(), id: \.0) { b, n in Badge(text: "\(n) \(b.label)") }
                         Spacer()
@@ -59,6 +59,8 @@ struct RuleInput: View {
     @Binding var text: String
     @Binding var hint: String?
     let placeholder: String
+    var examples: [String] = []
+    @State private var done: String?
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
@@ -67,11 +69,20 @@ struct RuleInput: View {
                 Button("Add rule") { add() }.buttonStyle(Pill(kind: .primary)).disabled(text.trimmingCharacters(in: .whitespaces).isEmpty)
             }.padding(10).background(Theme.card, in: RoundedRectangle(cornerRadius: 10)).overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Theme.hairline, style: StrokeStyle(lineWidth: 1, dash: [4])))
             if let h = hint { Text(h).font(.system(size: 11.5)).foregroundStyle(Theme.danger).padding(.leading, 4) }
+            else if let d = done { Text(d).font(.system(size: 11.5)).foregroundStyle(Theme.ok).padding(.leading, 4) }
+            if !examples.isEmpty && text.isEmpty {
+                HStack(spacing: 6) {
+                    Text("Try").font(.system(size: 11.5)).foregroundStyle(.secondary)
+                    ForEach(examples, id: \.self) { e in Button(e) { text = e }.buttonStyle(.plain).font(.system(size: 11.5)).foregroundStyle(Theme.accent) }
+                }.padding(.leading, 4)
+            }
         }
     }
     private func add() {
-        guard let r = RuleParser.parse(text) else { hint = "Moose didn't understand that. Try \"mute newsletters\", \"favourite maya@acme.com\" or \"boost invoice by 25\"."; return }
-        MailModel.shared.addRule(r); text = ""; hint = nil
+        guard let r = RuleParser.parse(text) else {
+            hint = "Moose didn't understand that. Try \"mute newsletters for a week\", \"favourite maya@acme.com\", \"boost invoice by 25\" or \"move emails from stripe.com to Receipts\"."; done = nil; return
+        }
+        done = MailModel.shared.addRule(r); text = ""; hint = nil
     }
 }
 
@@ -89,7 +100,7 @@ struct RuleCard: View {
 
     init(rule: Rule) {
         let m = MailModel.shared
-        symbol = rule.action == .mute ? "bell.slash" : rule.action == .favourite ? "star.fill" : "arrow.up.right"
+        symbol = rule.folder != nil ? "folder" : rule.action == .mute ? "bell.slash" : rule.action == .favourite ? "star.fill" : "arrow.up.right"
         title = rule.title; action = rule.actionText
         meta = rule.source == "you" ? "yours" : "added by \(rule.source)"
         onDelete = { m.removeRule(rule.id) }

@@ -4,10 +4,10 @@ import Foundation
 
 /// A mass or single action in the Stack window. Every one has an exact inverse, which is what makes "Undo" instead of "Are you sure?" safe.
 public enum StackAction: String, Codable, Sendable {
-    case archive, markRead, trash
+    case archive, markRead, trash, file
 
     public func verb(past: Bool = true) -> String {
-        switch self { case .archive: "Archived"; case .markRead: "Marked read"; case .trash: "Deleted" }
+        switch self { case .archive: "Archived"; case .markRead: "Marked read"; case .trash: "Deleted"; case .file: "Filed" }
     }
 
     /// "Archived 2 from Stripe", "Deleted 7", "Marked read 1".

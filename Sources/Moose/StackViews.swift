@@ -153,7 +153,11 @@ struct MessageRow: View {
             Button("Mark as read") { mail.markRead(m) }
             Button("Archive") { mail.archive(m) }
             Divider()
+            Button("File everything from \(m.displayName) in a folder") { mail.fileSender(m) }
+            Divider()
             Button("Mute \(m.fromEmail)") { mail.muteSender(m.fromEmail) }
+            Button("Mute for a week") { mail.muteSender(m.fromEmail, days: 7) }
+            Button("Mute everyone at this domain") { mail.muteDomain(of: m.fromEmail) }
         }
     }
 }
@@ -172,7 +176,13 @@ struct ThreadView: View {
             PaneHeader(title: message.subject, subtitle: "\(message.displayName) · \(message.account) · \(Fmt.time(message.date))") {
                 HStack(spacing: 8) {
                     Button { mail.toggleFavourite(message.fromEmail) } label: { Image(systemName: mail.favourites.contains(message.fromEmail) ? "star.fill" : "star") }.buttonStyle(Pill()).help("Favourite sender")
-                    Button { mail.muteSender(message.fromEmail); Nav.shared.open = nil } label: { Image(systemName: "bell.slash") }.buttonStyle(Pill()).help("Mute sender")
+                    Menu {
+                        Button("Mute for a week") { mail.muteSender(message.fromEmail, days: 7) }
+                        Button("Mute for good") { mail.muteSender(message.fromEmail) }
+                        Button("Mute everyone at this domain") { mail.muteDomain(of: message.fromEmail) }
+                        Divider()
+                        Button("File everything from \(message.displayName) in a folder") { mail.fileSender(message) }
+                    } label: { Image(systemName: "bell.slash") }.menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize().help("Mute or file this sender")
                     Button { mail.archive(message); Nav.shared.open = nil } label: { Image(systemName: "archivebox") }.buttonStyle(Pill()).help("Archive")
                     Button("Back") { Nav.shared.open = nil }.buttonStyle(Pill()).keyboardShortcut(.escape, modifiers: [])
                 }

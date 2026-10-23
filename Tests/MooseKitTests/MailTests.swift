@@ -53,6 +53,38 @@ final class MailTests: XCTestCase {
         XCTAssertTrue(RuleParser.parse("favourite maya")!.matches(msg("m@acme.com", "x").with(name: "Maya Chen")))
     }
 
+    func testFolderRulesFromPlainSentences() {
+        let r = RuleParser.parse("group all emails from cassiobury school into one folder called Cassiobury School")
+        XCTAssertEqual(r?.action, .file("Cassiobury School"))
+        XCTAssertEqual(r?.keywords, ["cassiobury school"])
+        XCTAssertTrue(r!.matches(msg("office@cassiobury.herts.sch.uk", "Term dates").with(name: "Cassiobury School")))
+        XCTAssertFalse(r!.matches(msg("bob@x.com", "Hi")))
+        XCTAssertEqual(RuleParser.parse("move emails from stripe.com to Receipts")?.action, .file("Receipts"))
+        XCTAssertEqual(RuleParser.parse("move emails from stripe.com to Receipts")?.senders, ["stripe.com"])
+        XCTAssertEqual(RuleParser.parse("file invoices into the folder \"Billing\"")?.action, .file("Billing"))
+        XCTAssertEqual(RuleParser.parse("route mail about trips to Spain into The Hub")?.action, .file("The Hub"))
+        XCTAssertEqual(RuleParser.parse("move emails from cassiobury school to a folder")?.action, .file("Cassiobury School"))
+        XCTAssertNil(RuleParser.parse("move it somewhere"))
+    }
+
+    func testTemporaryMuteExpires() {
+        let now = Date()
+        let r = RuleParser.parse("mute all emails from news@club.com for 3 days", now: now)
+        XCTAssertEqual(r?.action, .mute); XCTAssertEqual(r?.senders, ["news@club.com"])
+        XCTAssertTrue(r!.isActive(at: now.addingTimeInterval(2 * 86400)))
+        XCTAssertFalse(r!.isActive(at: now.addingTimeInterval(4 * 86400)))
+        XCTAssertEqual(RuleParser.parse("mute spam for a week", now: now)?.until, now.addingTimeInterval(7 * 86400))
+        let m = msg("news@club.com", "Weekly")
+        XCTAssertEqual(Priority.score(m, PriorityContext(rules: [r!], now: now)).muted, .rule)
+        XCTAssertNil(Priority.score(m, PriorityContext(rules: [r!], now: now.addingTimeInterval(5 * 86400))).muted)
+    }
+
+    func testFolderRuleSurvivesStorage() throws {
+        var d = MooseData(); d.rules = [Rule(keywords: ["school"], action: .file("School"))]
+        let back = try JSONDecoder().decode(MooseData.self, from: JSONEncoder().encode(d))
+        XCTAssertEqual(back.rules.first?.folder, "School")
+    }
+
     func testAddressParsingAndHTML() {
         XCTAssertEqual(MailText.parseAddress("\"Maya Chen\" <Maya@Acme.com>").email, "maya@acme.com")
         XCTAssertEqual(MailText.parseAddress("Maya Chen <m@a.com>").name, "Maya Chen")

@@ -19,7 +19,7 @@ Moose is a text-only, stacked, multi-account Gmail client. Mail is grouped into 
 1. `get_status`: accounts, access level, how many stacks need attention. If `accounts` is empty, tell the user to finish setup in Moose.
 2. `list_stacks {view: "priority"}`: ranked stacks with `why`. Summarise the top few for the user.
 3. `read_message {message_id}` before judging or replying.
-4. Organise: `set_favourite`, `mute_sender`, `create_rule` ("mute newsletters", "favourite maya@acme.com", "boost invoice by 25"), `mark_read`, `archive_message`. Muting hides mail from Priority, it never deletes. Mention what you changed so the user can undo it (`delete_rule`).
+4. Organise: `set_favourite`, `mute_sender`, `create_rule` ("mute newsletters", "favourite maya@acme.com", "boost invoice by 25", "mute X for a week", "move emails from X to Folder Name"), `mark_read`, `archive_message`. Muting hides mail from Priority, it never deletes. Mention what you changed so the user can undo it (`delete_rule`).
 5. Reply: `draft_reply {message_id}` (omit `body` and Moose drafts with the user's own Claude in their voice; add `tone` or `guidance`). Show the draft. Send only on approval.
 
 ## Tool reference
