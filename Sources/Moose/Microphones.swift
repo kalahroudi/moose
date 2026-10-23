@@ -45,7 +45,7 @@ enum Microphones {
 
     /// True while the laptop lid is shut (the Mac is docked to a display).
     static func lidClosed() -> Bool {
-        let root = IORegistryEntryFromPath(kIOMainPortDefault, "IOService:/IOResources/IOPMrootDomain")
+        let root = IOServiceGetMatchingService(kIOMainPortDefault, IOServiceMatching("IOPMrootDomain"))
         guard root != 0 else { return false }
         defer { IOObjectRelease(root) }
         let v = IORegistryEntryCreateCFProperty(root, "AppleClamshellState" as CFString, kCFAllocatorDefault, 0)?.takeRetainedValue()
