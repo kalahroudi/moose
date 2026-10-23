@@ -16,6 +16,7 @@ final class StackModel {
     var showAll = false
     var scope: Scope = .sender
     var reply = ""
+    var cc = ""
     var drafting = false
     private var handled = Set<String>()
     private var bodies: [String: String] = [:]
@@ -26,7 +27,7 @@ final class StackModel {
         handled = []; bodies = [:]; index = 0; reset()
     }
 
-    func release() { items = []; handled = []; bodies = [:]; reply = ""; reset() }
+    func release() { items = []; handled = []; bodies = [:]; reply = ""; cc = ""; reset() }
     private func reset() { mode = .browse; showAll = false; scope = .sender }
 
     private var present: Set<String> { Set(mail.data.messages.map(\.id)) }
@@ -58,7 +59,7 @@ final class StackModel {
 
     func startReply() {
         guard let m = message else { return }
-        mode = .replying; showAll = false
+        mode = .replying; showAll = false; cc = ""
         reply = mail.data.composeDrafts[m.id] ?? ""
         if reply.isEmpty, ClaudeDrafter.available { draft(.normal) }
     }
@@ -76,13 +77,22 @@ final class StackModel {
 
     func cancelReply() { mode = .browse }
 
+    func toggleReplyAll() {
+        guard let m = message else { return }
+        if !cc.isEmpty { cc = ""; return }
+        Task {
+            do { cc = try await mail.replyAllCc(for: m); if cc.isEmpty { AppModel.shared.show("Nobody else was on this message.") } }
+            catch { AppLog.error(error, context: "stack reply all"); AppModel.shared.show(UserError.message(for: error, action: "Find the other recipients"), error: true) }
+        }
+    }
+
     func send() {
         guard let m = message else { return }
         let body = reply
         Task {
             do {
-                _ = try await mail.queueReply(to: m, body: body, undoSeconds: 5, byAgent: false)
-                mail.setCompose(m.id, ""); reply = ""; handled.insert(m.id); mode = .browse
+                _ = try await mail.queueReply(to: m, body: body, cc: cc, undoSeconds: 5, byAgent: false)
+                mail.setCompose(m.id, ""); reply = ""; cc = ""; handled.insert(m.id); mode = .browse
             } catch { AppLog.error(error, context: "stack send"); AppModel.shared.show(UserError.message(for: error, action: "Send the reply"), error: true) }
         }
     }
@@ -302,11 +312,13 @@ private struct Card: View {
             Divider()
             HStack {
                 Text(st.drafting ? "Claude is writing…" : ClaudeDrafter.available ? "Reply · drafted by Claude in your voice · edit freely" : "Reply").font(.system(size: 12)).foregroundStyle(.secondary)
+                Button(st.cc.isEmpty ? "Reply all" : "Just reply") { st.toggleReplyAll() }.buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(Theme.accent)
                 Spacer()
                 if ClaudeDrafter.available && !st.drafting {
                     ForEach([DraftTone.shorter, .warmer, .decline, .askForCall], id: \.self) { t in Button(t.label) { st.draft(t) }.buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(Theme.accent) }
                 }
             }
+            if !st.cc.isEmpty { Text("Cc: \(st.cc)").font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(2) }
             TextEditor(text: Bindable(st).reply).font(.system(size: 14.5)).scrollContentBackground(.hidden).padding(8).frame(minHeight: 120, maxHeight: 240)
                 .background(Theme.pane, in: RoundedRectangle(cornerRadius: 10)).overlay(RoundedRectangle(cornerRadius: 10).stroke(Theme.accent))
                 .onChange(of: st.reply) { _, v in MailModel.shared.setCompose(m.id, v) }

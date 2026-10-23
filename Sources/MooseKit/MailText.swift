@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import Foundation
+import UniformTypeIdentifiers
 
 /// Everything that turns raw mail into plain text and back. Pure, so it is unit tested.
 public enum MailText {
@@ -13,6 +14,29 @@ public enum MailText {
             return (name, email)
         }
         return ("", s.lowercased())
+    }
+
+    /// Bare, lowercased addresses from a header like `Maya <m@a.com>, "Chen, Li" <li@b.com>`. Commas inside quotes or <> don't split.
+    public static func splitAddresses(_ raw: String) -> [String] {
+        var parts: [String] = [], cur = "", quoted = false, angle = false
+        for ch in raw {
+            switch ch {
+            case "\"": quoted.toggle(); cur.append(ch)
+            case "<": angle = true; cur.append(ch)
+            case ">": angle = false; cur.append(ch)
+            case "," where !quoted && !angle, ";" where !quoted && !angle: parts.append(cur); cur = ""
+            default: cur.append(ch)
+            }
+        }
+        parts.append(cur)
+        var seen = Set<String>()
+        return parts.map { parseAddress($0).email }.filter { $0.contains("@") && !$0.contains(" ") && seen.insert($0).inserted }
+    }
+
+    /// Who to copy on a reply-all: everyone the message went to, except you and the person you are replying to.
+    public static func replyAllCc(to: String, cc: String, replyingTo: String, me: String) -> [String] {
+        let skip: Set<String> = [me.lowercased(), replyingTo.lowercased()]
+        return splitAddresses(to + "," + cc).filter { !skip.contains($0) }
     }
 
     public static func stripHTML(_ html: String) -> String {
@@ -61,12 +85,28 @@ public enum MailText {
     }
 
     /// Builds an RFC 822 message, base64url encoded as Gmail wants. Header values are stripped of line breaks (no header injection).
-    public static func rawMessage(from: String, to: String, subject: String, body: String, inReplyTo: String? = nil, references: String? = nil) -> String {
+    public static func rawMessage(from: String, to: String, subject: String, body: String, inReplyTo: String? = nil, references: String? = nil, attachments: [MailAttachment] = [], cc: String = "", bcc: String = "") -> String {
         func clean(_ s: String) -> String { s.replacingOccurrences(of: "\r", with: " ").replacingOccurrences(of: "\n", with: " ") }
-        var h = ["From: \(clean(from))", "To: \(clean(to))", "Subject: \(encodeHeader(clean(subject)))", "MIME-Version: 1.0", "Content-Type: text/plain; charset=UTF-8", "Content-Transfer-Encoding: 8bit"]
+        let crlfBody = body.replacingOccurrences(of: "\r\n", with: "\n").replacingOccurrences(of: "\n", with: "\r\n")
+        let boundary = "moose-" + UUID().uuidString
+        var h = ["From: \(clean(from))", "To: \(clean(to))", "Subject: \(encodeHeader(clean(subject)))", "MIME-Version: 1.0"]
+        if !cc.trimmingCharacters(in: .whitespaces).isEmpty { h.insert("Cc: \(clean(cc))", at: 2) }
+        if !bcc.trimmingCharacters(in: .whitespaces).isEmpty { h.insert("Bcc: \(clean(bcc))", at: 2) }
         if let r = inReplyTo { h.append("In-Reply-To: \(clean(r))") }
         if let r = references ?? inReplyTo { h.append("References: \(clean(r))") }
-        let msg = h.joined(separator: "\r\n") + "\r\n\r\n" + body.replacingOccurrences(of: "\r\n", with: "\n").replacingOccurrences(of: "\n", with: "\r\n")
+        if attachments.isEmpty {
+            h += ["Content-Type: text/plain; charset=UTF-8", "Content-Transfer-Encoding: 8bit"]
+            return Data((h.joined(separator: "\r\n") + "\r\n\r\n" + crlfBody).utf8).base64URL
+        }
+        h.append("Content-Type: multipart/mixed; boundary=\"\(boundary)\"")
+        var msg = h.joined(separator: "\r\n") + "\r\n\r\n--\(boundary)\r\nContent-Type: text/plain; charset=UTF-8\r\nContent-Transfer-Encoding: 8bit\r\n\r\n\(crlfBody)\r\n"
+        for a in attachments {
+            let name = encodeHeader(clean(a.filename).replacingOccurrences(of: "\"", with: "'"))
+            let type = clean(a.mimeType)
+            msg += "--\(boundary)\r\nContent-Type: \(type); name=\"\(name)\"\r\nContent-Disposition: attachment; filename=\"\(name)\"\r\nContent-Transfer-Encoding: base64\r\n\r\n"
+            msg += a.data.base64EncodedString(options: [.lineLength76Characters, .endLineWithCarriageReturn, .endLineWithLineFeed]) + "\r\n"
+        }
+        msg += "--\(boundary)--\r\n"
         return Data(msg.utf8).base64URL
     }
 
@@ -77,5 +117,21 @@ public enum MailText {
     public static func excerpt(_ s: String, _ n: Int) -> String {
         let flat = s.replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression).trimmingCharacters(in: .whitespaces)
         return flat.count <= n ? flat : String(flat.prefix(n - 1)) + "…"
+    }
+}
+
+/// A file attached to an outgoing email.
+public struct MailAttachment: Equatable, Sendable {
+    public var filename: String
+    public var mimeType: String
+    public var data: Data
+    public init(filename: String, mimeType: String, data: Data) { self.filename = filename; self.mimeType = mimeType; self.data = data }
+
+    /// Gmail refuses messages over 25 MB; base64 adds a third, so stay well under.
+    public static let maxTotalBytes = 18 * 1024 * 1024
+
+    public static func load(_ url: URL) throws -> MailAttachment {
+        let type = (try? url.resourceValues(forKeys: [.contentTypeKey]))?.contentType?.preferredMIMEType ?? "application/octet-stream"
+        return MailAttachment(filename: url.lastPathComponent, mimeType: type, data: try Data(contentsOf: url))
     }
 }

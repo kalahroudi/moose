@@ -33,6 +33,8 @@ Moose is a text-only, stacked, multi-account Gmail client. Mail is grouped into 
 | `undo_last` | undoes the last archive / mark read / trash |
 | `delete_rule` | removes a rule |
 | `draft_reply` | creates a Gmail draft (needs Draft & ask or Full access) |
+| `draft_email` | new email (not a reply) saved as a Gmail draft; give `body`, or a `brief` and Moose writes it with the user's Claude |
+| `send_email` | sends a new email; same approval rules as `send_reply` |
 | `send_reply {message_id, body, confirm}` | **sends email**, ask the user first |
 
 Read tools work from Moose's local cache even when the app is closed. Everything else starts Moose in the background if needed.

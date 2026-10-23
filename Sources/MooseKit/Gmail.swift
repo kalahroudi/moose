@@ -90,6 +90,14 @@ public actor GmailClient {
         return out.sorted { $0.date > $1.date }
     }
 
+    /// The To and Cc headers of one message, for reply-all.
+    public func recipientHeaders(_ id: String) async throws -> (to: String, cc: String) {
+        let r = try await request("/messages/\(id)", query: [.init(name: "format", value: "metadata"), .init(name: "metadataHeaders", value: "To"), .init(name: "metadataHeaders", value: "Cc")])
+        let hs = ((r["payload"] as? [String: Any])?["headers"] as? [[String: Any]]) ?? []
+        func h(_ n: String) -> String { hs.first { ($0["name"] as? String)?.lowercased() == n.lowercased() }?["value"] as? String ?? "" }
+        return (h("To"), h("Cc"))
+    }
+
     func fetchMetadata(_ id: String) async throws -> MailMessage? {
         let headers = ["From", "Subject", "List-Unsubscribe", "Precedence", "Message-ID", "References"]
         let r = try await request("/messages/\(id)", query: [.init(name: "format", value: "metadata")] + headers.map { .init(name: "metadataHeaders", value: $0) })
@@ -170,8 +178,8 @@ public actor GmailClient {
 
     // MARK: Writing
 
-    public func createDraft(to: String, subject: String, body: String, threadId: String?, inReplyTo: String?, references: String?) async throws -> String {
-        var msg: [String: Any] = ["raw": MailText.rawMessage(from: account, to: to, subject: subject, body: body, inReplyTo: inReplyTo, references: references)]
+    public func createDraft(to: String, subject: String, body: String, threadId: String?, inReplyTo: String?, references: String?, attachments: [MailAttachment] = [], cc: String = "", bcc: String = "") async throws -> String {
+        var msg: [String: Any] = ["raw": MailText.rawMessage(from: account, to: to, subject: subject, body: body, inReplyTo: inReplyTo, references: references, attachments: attachments, cc: cc, bcc: bcc)]
         if let t = threadId { msg["threadId"] = t }
         let r = try await request("/drafts", method: "POST", body: ["message": msg])
         guard let id = r["id"] as? String else { throw GmailError.decode }

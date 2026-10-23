@@ -116,13 +116,22 @@ let allTools: [Tool] = {
     t.append(Tool(name: "delete_rule", description: "Delete a rule by id (from list_rules).", properties: ["rule_id": prop("string", "Rule id.")], required: ["rule_id"], destructive: true) { a in try await forward("delete_rule", a) })
 
     t.append(Tool(name: "draft_reply", description: "Write a reply draft and save it in Gmail (it is NOT sent). Give `body`, or omit it and Moose drafts with the user's own Claude in their voice. Needs agent access Draft & ask or Full access.",
-                  properties: ["message_id": prop("string", "Message to reply to."), "body": prop("string", "The reply text. Optional."), "tone": prop("string", "If drafting with Claude.", enumValues: ["normal", "shorter", "warmer", "decline", "askForCall"]), "guidance": prop("string", "Extra guidance for Claude.")], required: ["message_id"]) { a in try await forward("draft_reply", a) })
+                  properties: ["message_id": prop("string", "Message to reply to."), "body": prop("string", "The reply text. Optional."), "tone": prop("string", "If drafting with Claude.", enumValues: ["normal", "shorter", "warmer", "decline", "askForCall"]), "guidance": prop("string", "Extra guidance for Claude."), "reply_all": prop("boolean", "Also copy everyone else the message went to.")], required: ["message_id"]) { a in try await forward("draft_reply", a) })
 
     t.append(Tool(name: "send_reply", description: "SEND an email reply. Ask the user first. With agent access Draft & ask the user must approve in a native dialog (denied on timeout). With Full access it is sent after a short undo window. Refused when read only.",
-                  properties: ["message_id": prop("string", "Message to reply to."), "body": prop("string", "Exact reply text to send."), "confirm": prop("boolean", "Must be true: you have the user's go-ahead.")],
+                  properties: ["message_id": prop("string", "Message to reply to."), "body": prop("string", "Exact reply text to send."), "reply_all": prop("boolean", "Also copy everyone else the message went to."), "confirm": prop("boolean", "Must be true: you have the user's go-ahead.")],
                   required: ["message_id", "body", "confirm"], destructive: true) { a in
         guard (a["confirm"] as? Bool) == true else { throw ToolError(message: "confirm must be true, and only after the user agreed. Nothing was sent.") }
         return try await forward("send_reply", a)
+    })
+    t.append(Tool(name: "draft_email", description: "Write a NEW email (not a reply) and save it in Gmail as a draft (it is NOT sent). Give `body`, or omit it and give `brief` so Moose writes subject and body with the user's own Claude in their voice. Needs agent access Draft & ask or Full access.",
+                  properties: ["to": prop("string", "Recipient address(es), comma separated."), "cc": prop("string", "Cc addresses."), "bcc": prop("string", "Bcc addresses."), "subject": prop("string", "Subject. Optional when Claude writes it."), "body": prop("string", "The email text. Optional."), "brief": prop("string", "What the email should say, if Claude writes it."), "account": prop("string", "Which connected address to send from (default: the first).")], required: ["to"]) { a in try await forward("draft_email", a) })
+
+    t.append(Tool(name: "send_email", description: "SEND a NEW email. Ask the user first. With agent access Draft & ask the user must approve in a native dialog (denied on timeout). With Full access it is sent after a short undo window. Refused when read only.",
+                  properties: ["to": prop("string", "Recipient address(es), comma separated."), "cc": prop("string", "Cc addresses."), "bcc": prop("string", "Bcc addresses."), "subject": prop("string", "Subject."), "body": prop("string", "Exact text to send."), "account": prop("string", "Which connected address to send from (default: the first)."), "confirm": prop("boolean", "Must be true: you have the user's go-ahead.")],
+                  required: ["to", "subject", "body", "confirm"], destructive: true) { a in
+        guard (a["confirm"] as? Bool) == true else { throw ToolError(message: "confirm must be true, and only after the user agreed. Nothing was sent.") }
+        return try await forward("send_email", a)
     })
     return t
 }()

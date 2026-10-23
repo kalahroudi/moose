@@ -320,6 +320,8 @@ struct ThreadView: View {
     @State private var reply: String = ""
     @State private var drafting = false
     @State private var note: String?
+    @State private var cc = ""
+    @State private var gettingCc = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -359,7 +361,8 @@ struct ThreadView: View {
     private var replyBox: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 6) {
-                Text("Reply").font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.accent)
+                Text(cc.isEmpty ? "Reply" : "Reply all").font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.accent)
+                Button(cc.isEmpty ? "Reply all" : "Just \(message.displayName)") { toggleReplyAll() }.buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(Theme.accent).disabled(gettingCc)
                 Spacer()
                 if ClaudeDrafter.available {
                     ForEach(DraftTone.allCases, id: \.self) { tone in
@@ -374,6 +377,7 @@ struct ThreadView: View {
                     .onChange(of: reply) { _, v in mail.setCompose(message.id, v) }
                 if reply.isEmpty { Text(drafting ? "Claude is writing…" : "Write a reply, or let Claude draft one.").foregroundStyle(.secondary).padding(.top, 8).padding(.leading, 5).allowsHitTesting(false) }
             }.padding(8).background(Theme.pane, in: RoundedRectangle(cornerRadius: 8)).overlay(RoundedRectangle(cornerRadius: 8).stroke(Theme.hairline))
+            if !cc.isEmpty { Text("Cc: \(cc)").font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(2) }
             HStack {
                 if let n = note { Text(n).font(.system(size: 12)).foregroundStyle(.secondary) }
                 Spacer()
@@ -382,6 +386,16 @@ struct ThreadView: View {
                     .disabled(reply.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
         }.card(padding: 14)
+    }
+
+    private func toggleReplyAll() {
+        if !cc.isEmpty { cc = ""; return }
+        gettingCc = true
+        Task {
+            defer { gettingCc = false }
+            do { cc = try await mail.replyAllCc(for: message); if cc.isEmpty { note = "Nobody else was on this message." } }
+            catch { AppLog.error(error, context: "reply all"); AppModel.shared.show(UserError.message(for: error, action: "Find the other recipients"), error: true) }
+        }
     }
 
     private func draft(_ tone: DraftTone) {
@@ -396,7 +410,7 @@ struct ThreadView: View {
 
     private func saveDraft() {
         Task {
-            do { _ = try await mail.saveDraftOnly(to: message, body: reply); note = "Saved in your Gmail drafts." }
+            do { _ = try await mail.saveDraftOnly(to: message, body: reply, cc: cc); note = "Saved in your Gmail drafts." }
             catch { AppLog.error(error, context: "save draft"); AppModel.shared.show(UserError.message(for: error, action: "Save the draft"), error: true) }
         }
     }
@@ -404,7 +418,7 @@ struct ThreadView: View {
     private func send() {
         let body = reply
         Task {
-            do { _ = try await mail.queueReply(to: message, body: body, undoSeconds: 5, byAgent: false); reply = ""; mail.setCompose(message.id, ""); Nav.shared.open = nil }
+            do { _ = try await mail.queueReply(to: message, body: body, cc: cc, undoSeconds: 5, byAgent: false); reply = ""; cc = ""; mail.setCompose(message.id, ""); Nav.shared.open = nil }
             catch { AppLog.error(error, context: "send reply"); AppModel.shared.show(UserError.message(for: error, action: "Send the reply"), error: true) }
         }
     }
