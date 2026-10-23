@@ -47,6 +47,7 @@ final class MailModel {
     private var sentSamples: [String] = []
     private var control: ControlServer?
     private var pendingOps = 0
+    private var wakeTask: Task<Void, Never>?
 
     /// What "Undo" restores. One entry per action; ⌘Z walks back through the last few.
     struct UndoEntry: Identifiable {
@@ -197,6 +198,7 @@ final class MailModel {
         persistSoon()
         await refreshFolders()
         if Nav.shared.pane == .folder, let f = Nav.shared.folder { await loadFolder(f) }
+        await checkFollowUps()
         if filed > 0 { AppModel.shared.show("Filed \(filed) new \(filed == 1 ? "email" : "emails") into your folders") }
         if failed > 0 { AppModel.shared.show("Couldn't refresh \(failed == 1 ? "one account" : "\(failed) accounts"). Check your connection; details are in the log.", error: true) }
     }
@@ -343,6 +345,7 @@ final class MailModel {
     func setRule(_ id: UUID, enabled: Bool) { if let i = data.rules.firstIndex(where: { $0.id == id }) { data.rules[i].enabled = enabled; persistSoon() } }
 
     func markRead(_ m: MailMessage) {
+        dropSnoozes(ids: [m.id], onlyDue: true)       // reading it is the follow-up done
         if let i = data.messages.firstIndex(where: { $0.id == m.id }) {
             guard data.messages[i].unread else { return }
             data.messages[i].unread = false; persistSoon()
@@ -357,6 +360,7 @@ final class MailModel {
     /// Takes a message out of where it is: out of the inbox, or (for filed mail) out of its folder. It stays in All Mail.
     func archive(_ m: MailMessage) {
         if data.messages.contains(where: { $0.id == m.id }) {
+            dropSnoozes(ids: [m.id])
             data.messages.removeAll { $0.id == m.id }; persistSoon()
             if demo { return }
             Task { do { try await gmail(m.account)?.archive(m.id) } catch { AppLog.error(error, context: "archive") } }
@@ -391,6 +395,7 @@ final class MailModel {
         }
         let targets = messages.filter { present.contains($0.id) }
         guard !targets.isEmpty else { return nil }
+        if action == .archive || action == .trash { dropSnoozes(ids: targets.map(\.id)) }
         var text = folder.map { "\(action.verb()) \(targets.count) in “\($0)”" } ?? action.summary(count: targets.count, sender: sender)
         if case .folder(let f) = container, action == .archive { text = "Cleared \(targets.count) from “\(f)”" + (sender.map { " (\($0))" } ?? "") }
         if let customText { text = customText }
@@ -703,7 +708,7 @@ final class MailModel {
     @discardableResult
     func queueReply(to m: MailMessage, body: String, cc: String = "", undoSeconds: Int, byAgent: Bool) async throws -> PendingSend {
         try await queueSend(account: m.account, to: m.fromEmail, cc: cc, subject: MailText.replySubject(m.subject), body: body, threadId: m.threadId,
-                            inReplyTo: m.messageIDHeader, references: m.referencesHeader, undoSeconds: undoSeconds, byAgent: byAgent) { self.markRead(m) }
+                            inReplyTo: m.messageIDHeader, references: m.referencesHeader, undoSeconds: undoSeconds, byAgent: byAgent) { self.markRead(m); self.dropSnoozes(thread: m.threadId) }
     }
 
     /// A brand-new email (not a reply), sent the same way: draft first, then sent after the undo window.
@@ -755,6 +760,102 @@ final class MailModel {
         outbox.removeAll { $0 == p }
         Task { try? await gmail(p.account)?.deleteDraft(p.draftID) }
         AppModel.shared.show("Send cancelled")
+    }
+
+    // MARK: Follow-ups
+
+    /// Reminders that have come due: snoozed mail that is back, and threads nobody answered.
+    var dueFollowUps: [FollowUp] { FollowUps.due(data.followUps) }
+    /// What the menu bar icon and the status line count: priority stacks plus unanswered threads.
+    var attentionCount: Int { count(.priority) + data.followUps.filter { $0.kind == .awaitingReply && $0.isDue() }.count }
+
+    /// Hides a message until `date`. It comes back unread and at the top of Priority.
+    @discardableResult
+    func snooze(_ m: MailMessage, until date: Date) -> FollowUp {
+        let f = FollowUp(kind: .snooze, message: m, due: date)
+        FollowUps.add(f, to: &data.followUps)
+        followUpsChanged()
+        return f
+    }
+
+    /// Reminds the user at `date` if nobody has answered the message's thread by then.
+    @discardableResult
+    func remindIfNoReply(_ m: MailMessage, at date: Date) -> FollowUp {
+        let f = FollowUp(kind: .awaitingReply, message: m, due: date)
+        FollowUps.add(f, to: &data.followUps)
+        followUpsChanged()
+        return f
+    }
+
+    func completeFollowUp(_ id: UUID) {
+        data.followUps.removeAll { $0.id == id }
+        followUpsChanged()
+    }
+
+    /// Moves a reminder to another time; a reminder that already fired is armed again.
+    func reschedule(_ id: UUID, to date: Date) {
+        guard let i = data.followUps.firstIndex(where: { $0.id == id }) else { return }
+        data.followUps[i].due = date; data.followUps[i].notified = false
+        data.followUps.sort { $0.due < $1.due }
+        followUpsChanged()
+    }
+
+    /// A snooze ends when the message is archived, deleted, answered or (once it is back) read.
+    func dropSnoozes(ids: [String], onlyDue: Bool = false) {
+        let before = data.followUps.count
+        data.followUps.removeAll { $0.kind == .snooze && ids.contains($0.message.id) && (!onlyDue || $0.isDue()) }
+        if data.followUps.count != before { followUpsChanged() }
+    }
+
+    func dropSnoozes(thread: String) {
+        let ids = data.followUps.filter { $0.kind == .snooze && $0.message.threadId == thread }.map(\.message.id)
+        if !ids.isEmpty { dropSnoozes(ids: ids) }
+    }
+
+    private func followUpsChanged() {
+        persistSoon()
+        scheduleFollowUps()
+        AppModel.shared.onStatusChange?(attentionCount > 0 ? .active : .idle)
+    }
+
+    /// One sleeping task wakes at the next reminder. Nothing polls, so a hidden app still costs nothing.
+    func scheduleFollowUps() {
+        wakeTask?.cancel(); wakeTask = nil
+        guard !demo, let next = FollowUps.nextWake(data.followUps) else { return }
+        let delay = max(1, next.timeIntervalSinceNow)
+        wakeTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(delay))
+            guard !Task.isCancelled else { return }
+            await self?.checkFollowUps()
+        }
+    }
+
+    /// Clears threads that got an answer, then announces whatever came due. Runs at each wake-up and after every sync.
+    func checkFollowUps() async {
+        guard !demo else { return }
+        var answered: [FollowUp] = []
+        for f in data.followUps.filter({ $0.kind == .awaitingReply }).prefix(15) {
+            guard let g = gmail(f.message.account) else { continue }
+            if (try? await g.hasReply(thread: f.message.threadId, since: f.created)) == true { answered.append(f) }
+        }
+        for f in answered {
+            data.followUps.removeAll { $0.id == f.id }
+            AppModel.shared.notify("\(f.message.displayName) replied", body: f.message.subject)
+        }
+        for f in FollowUps.toAnnounce(data.followUps) {
+            guard let i = data.followUps.firstIndex(where: { $0.id == f.id }) else { continue }
+            data.followUps[i].notified = true
+            if f.kind == .snooze { bringBack(f.message) }
+            AppModel.shared.notify(f.kind == .snooze ? "Back in your inbox: \(f.message.displayName)" : "No reply yet from \(f.message.displayName)", body: f.message.subject)
+        }
+        followUpsChanged()
+    }
+
+    /// A snooze ran out: the message is unread and in the inbox again, here and in Gmail.
+    private func bringBack(_ m: MailMessage) {
+        if let i = data.messages.firstIndex(where: { $0.id == m.id }) { data.messages[i].unread = true }
+        else { var c = m; c.unread = true; if !c.labels.contains("INBOX") { c.labels.append("INBOX") }; data.messages.append(c) }
+        Task { do { try await gmail(m.account)?.modify(m.id, add: ["INBOX", "UNREAD"]) } catch { AppLog.error(error, context: "snooze return") } }
     }
 
     // MARK: Agent control API
@@ -909,6 +1010,20 @@ final class MailModel {
         case "undo": guard canUndo else { return fail("Nothing to undo.") }; undo(); return ok("Undone.")
         case "mark_read": guard let id = str("message_id"), let m = message(id) else { return fail("Unknown message_id.") }; markRead(m); return ok("Marked read.")
         case "archive": guard let id = str("message_id"), let m = message(id) else { return fail("Unknown message_id.") }; archive(m); return ok("Archived.")
+        case "snooze":
+            guard let id = str("message_id"), let m = message(id) else { return fail("Unknown message_id. Use list_stacks to find ids.") }
+            guard let when = FollowUps.when(until: str("until"), days: a["days"] as? Int, hours: a["hours"] as? Int) else { return fail("Give a time in the future: until (ISO 8601, e.g. 2026-11-02T09:00:00Z), or days / hours from now.") }
+            let f = snooze(m, until: when)
+            return ok("Snoozed until \(FollowUps.describe(f.due)). It is hidden from Priority until then, then comes back unread. follow_up id: \(f.id.uuidString). Use complete_follow_up to cancel.")
+        case "remind_if_no_reply":
+            guard let id = str("message_id"), let m = message(id) else { return fail("Unknown message_id. Use list_stacks or search_messages to find ids.") }
+            let when = FollowUps.when(until: str("until"), days: a["days"] as? Int, hours: a["hours"] as? Int) ?? FollowUps.dueAfter(days: 3)
+            let f = remindIfNoReply(m, at: when)
+            return ok("The user will be reminded \(FollowUps.describe(f.due)) if nobody has replied in that thread by then. follow_up id: \(f.id.uuidString). Use complete_follow_up to cancel.")
+        case "complete_follow_up":
+            guard let raw = str("follow_up_id"), let id = UUID(uuidString: raw), data.followUps.contains(where: { $0.id == id }) else { return fail("Unknown follow_up_id. Use list_follow_ups.") }
+            completeFollowUp(id)
+            return ok("Follow-up cleared.")
         case "set_favourite":
             guard let e = str("sender")?.lowercased() else { return fail("Missing sender.") }
             let on = (a["on"] as? Bool) ?? true

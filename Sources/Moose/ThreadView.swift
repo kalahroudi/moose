@@ -29,6 +29,7 @@ struct ThreadView: View {
     @State private var tidying = false
     @State private var unsub: UnsubscribeOption?
     @State private var unsubBusy = false
+    @State private var followDays: Int?
     @FocusState private var replyFocused: Bool
 
     var body: some View {
@@ -74,6 +75,7 @@ struct ThreadView: View {
                     Button("Block \(message.displayName): mute and archive everything") { mail.blockSender(message.fromEmail); Nav.shared.open = nil }.disabled(mail.isBlocked(message.fromEmail))
                     Button("File everything from \(message.displayName) in a folder") { mail.fileSender(message) }
                 } label: { Image(systemName: "bell.slash") }.menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize().help("Mute or file this sender")
+                RemindMenu(message: message) { Nav.shared.open = nil }
                 Button { archive() } label: { Image(systemName: "archivebox") }.buttonStyle(Pill()).help("Archive  E")
                 Button { Nav.shared.open = nil; mail.apply(.trash, to: [message], container: ls.container) } label: { Image(systemName: "trash") }.buttonStyle(Pill()).help("Delete (moves to Trash, can be undone)").accessibilityLabel("Delete")
                 Button("Back") { back() }.buttonStyle(Pill()).keyboardShortcut(.escape, modifiers: [])
@@ -306,6 +308,7 @@ struct ThreadView: View {
                 Button { toggleDictation() } label: { Label("Dictate", systemImage: "mic") }.buttonStyle(Pill()).help("Dictate  ⌃D")
                 Text(note ?? "Saved as you type").font(.system(size: 12)).foregroundStyle(.secondary)
                 Spacer()
+                followMenu
                 Button("Save draft") { saveDraft() }.buttonStyle(Pill()).disabled(blank)
                 Button("Send  ⌘↩") { send() }.buttonStyle(Pill(kind: .primary)).keyboardShortcut(.return, modifiers: .command).disabled(blank)
             }.padding(.horizontal, 12).padding(.vertical, 8)
@@ -413,6 +416,16 @@ struct ThreadView: View {
 
     private func archive() { mail.archive(message); Nav.shared.open = nil }
 
+    /// Ask to be reminded if this reply gets no answer.
+    private var followMenu: some View {
+        Menu {
+            Button("No reminder") { followDays = nil }
+            Divider()
+            ForEach(FollowUps.replyDays, id: \.self) { d in Button("Remind me if no reply in \(d == 1 ? "1 day" : "\(d) days")") { followDays = d } }
+        } label: { Label(followDays.map { "\($0)d" } ?? "Follow up", systemImage: followDays == nil ? "alarm" : "alarm.fill") }
+            .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize().help("Remind me if nobody replies")
+    }
+
     private var fullReply: String { MailText.withQuotes(reply, quotes: quotes, sender: message.displayName, date: message.date) }
 
     private func toggleReplyAll() {
@@ -446,7 +459,7 @@ struct ThreadView: View {
     private func send() {
         let body = fullReply
         Task {
-            do { _ = try await mail.queueReply(to: message, body: body, cc: cc, undoSeconds: 5, byAgent: false); reply = ""; cc = ""; quotes = []; mail.setCompose(message.id, ""); Nav.shared.open = nil }
+            do { _ = try await mail.queueReply(to: message, body: body, cc: cc, undoSeconds: 5, byAgent: false); reply = ""; cc = ""; quotes = []; mail.setCompose(message.id, ""); if let d = followDays { mail.remindIfNoReply(message, at: FollowUps.dueAfter(days: d)) }; followDays = nil; Nav.shared.open = nil }
             catch { AppLog.error(error, context: "send reply"); AppModel.shared.show(UserError.message(for: error, action: "Send the reply"), error: true) }
         }
     }

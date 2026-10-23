@@ -35,9 +35,9 @@ public struct MailMessage: Codable, Identifiable, Hashable, Sendable {
 }
 
 public enum MuteBucket: String, Codable, Sendable, CaseIterable {
-    case newsletter, notification, promo, rule
+    case newsletter, notification, promo, rule, snoozed
     public var label: String {
-        switch self { case .newsletter: "newsletters"; case .notification: "notifications"; case .promo: "promos"; case .rule: "by your rules" }
+        switch self { case .newsletter: "newsletters"; case .notification: "notifications"; case .promo: "promos"; case .rule: "by your rules"; case .snoozed: "snoozed" }
     }
 }
 
