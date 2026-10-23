@@ -35,6 +35,7 @@ Moose is a text-only, stacked, multi-account Gmail client. Mail is grouped into 
 | `move_to_inbox {message_ids}`, `rename_folder`, `move_folder {name, before / position}`, `set_folder_filing {name, on}` | organises folders, reversible (move to inbox has Undo) |
 | `folder_action {name, action}` | `mark_read`, `move_to_inbox`, `clear` (leave the folder, stay in All Mail) act on the newest 300 per account, with Undo. `empty` moves everything to Gmail Trash: needs `confirm: true`, ask first |
 | `delete_folder {name, mode, confirm}` | **removes the Gmail label and its rules, cannot be undone.** The user must also approve in a native dialog. Ask first. `mode`: `keep_mail`, `to_inbox` or `trash_mail` |
+| `list_microphones`, `set_microphone {microphone}` | dictation input: lists mics (a nearby iPhone appears when Continuity is on) and picks one or `automatic`; no mail is touched |
 | `undo_last` | undoes the last archive / mark read / trash / folder action |
 | `delete_rule` | removes a rule |
 | `draft_reply` | creates a Gmail draft (needs Draft & ask or Full access) |

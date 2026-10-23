@@ -752,6 +752,18 @@ final class MailModel {
             let count = groups.reduce(0) { $0 + $1.messages.count }
             for g in groups { apply(.unfile, to: g.messages, container: g.container) }
             return ok("Moved \(count) to the inbox. Filing rules will leave them there. The user can press Undo in Moose.")
+        case "list_microphones":
+            struct MicOut: Encodable { let name: String; let uid: String; let iPhone: Bool; let builtIn: Bool; let selected: Bool }
+            let chosen = Prefs.shared.microphone
+            let used = Microphones.resolve(chosen)
+            return ok(jsonText(["setting": chosen.isEmpty ? "automatic" : chosen, "lidClosed": Microphones.lidClosed() ? "true" : "false", "dictationWillUse": used?.name ?? "the system default microphone"]) + "\n" +
+                      jsonText(Microphones.all().map { MicOut(name: $0.name, uid: $0.uid, iPhone: $0.isPhone, builtIn: $0.isBuiltIn, selected: $0.uid == used?.uid) }))
+        case "set_microphone":
+            let want = str("microphone") ?? "automatic"
+            if want.lowercased() == "automatic" { Prefs.shared.microphone = Microphones.automatic; return ok("Dictation microphone: automatic (the system choice, or a nearby iPhone when the lid is closed).") }
+            guard let m = Microphones.all().first(where: { $0.uid == want || $0.name.caseInsensitiveCompare(want) == .orderedSame }) else { return fail("No such microphone right now. Use list_microphones; a phone must be nearby to appear.") }
+            Prefs.shared.microphone = m.uid
+            return ok("Dictation will use \(m.name).")
         case "list_folders":
             await refreshFolders(force: true)
             let names = folderNames

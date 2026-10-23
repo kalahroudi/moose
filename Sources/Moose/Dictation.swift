@@ -13,6 +13,8 @@ final class Dictation {
     private(set) var text = ""
     private(set) var level: Float = 0
     private(set) var error: String?
+    /// Name of the microphone in use when it isn't the system default, so the UI can say "Listening on Maya's iPhone".
+    private(set) var source: String?
 
     private var engine: AVAudioEngine?
     private var request: SFSpeechAudioBufferRecognitionRequest?
@@ -36,8 +38,12 @@ final class Dictation {
         req.requiresOnDeviceRecognition = true
         let eng = AVAudioEngine()
         let input = eng.inputNode
+        // Lid closed: the built-in microphone is shut away, so listen through the iPhone (or the chosen device) instead.
+        let mic = Microphones.resolve(Prefs.shared.microphone)
+        if let mic, !Microphones.route(eng, to: mic) { error = "Couldn't use \(mic.name) as the microphone."; return }
+        source = mic?.name
         let format = input.outputFormat(forBus: 0)
-        guard format.sampleRate > 0 else { error = "No microphone found."; return }
+        guard format.sampleRate > 0 else { error = Microphones.lidClosed() ? "The lid is closed and no iPhone microphone was found. Bring your iPhone near the Mac, or choose a microphone in Settings." : "No microphone found."; return }
         input.installTap(onBus: 0, bufferSize: 1024, format: format, block: Self.tap(req) { [weak self] l in Task { @MainActor in self?.level = l } })
         do { eng.prepare(); try eng.start() } catch let e { input.removeTap(onBus: 0); self.error = "Couldn't start the microphone."; AppLog.error(e, context: "dictation"); return }
         engine = eng; request = req; active = true
@@ -80,7 +86,7 @@ final class Dictation {
     private func teardown() {
         engine?.stop(); engine?.inputNode.removeTap(onBus: 0)
         task?.cancel()
-        engine = nil; request = nil; task = nil; active = false; level = 0
+        engine = nil; request = nil; task = nil; active = false; level = 0; source = nil
     }
 
     private static func speechAllowed() async -> Bool {

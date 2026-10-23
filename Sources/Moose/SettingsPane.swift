@@ -51,6 +51,9 @@ struct SettingsPane: View {
                     SettingRow("Check mail only when visible", "Moose never polls in the background. It checks when you open the popover or window.") { Badge(text: "always on", kind: .ok) }
                     SettingRow("Check at most every", "While a window is open, Moose rechecks this often.") { Segmented(options: [(60, "1 min"), (300, "5 min"), (900, "15 min")], selection: $p.refreshSeconds) }
                 }
+                SettingsGroup("Dictation") {
+                    SettingRow("Microphone", "Automatic uses your Mac's microphone, and your iPhone when the lid is closed and the Mac is docked. The iPhone must be nearby, signed in to the same Apple Account, with Wi-Fi and Bluetooth on.") { MicrophonePicker() }
+                }
                 SettingsGroup("Notifications") {
                     SettingRow("Notify when tasks finish", "For longer jobs such as installing Claude Code.") { Toggle("", isOn: $p.notify).labelsHidden().toggleStyle(.switch).tint(Theme.accent) }
                 }
@@ -134,5 +137,18 @@ struct AccountsView: View {
                 }
             }
         }.frame(maxWidth: 640)
+    }
+}
+
+/// Lists the inputs the Mac currently sees. Re-read each time the menu opens, because a phone comes and goes.
+private struct MicrophonePicker: View {
+    @State private var mics = Microphones.all()
+    var body: some View {
+        @Bindable var p = Prefs.shared
+        Picker("", selection: $p.microphone) {
+            Text("Automatic").tag(Microphones.automatic)
+            ForEach(mics) { Text($0.isPhone ? "\($0.name) (iPhone)" : $0.name).tag($0.uid) }
+            if p.microphone != Microphones.automatic, !mics.contains(where: { $0.uid == p.microphone }) { Text("Chosen microphone (not connected)").tag(p.microphone) }
+        }.labelsHidden().frame(width: 220).onAppear { mics = Microphones.all() }
     }
 }

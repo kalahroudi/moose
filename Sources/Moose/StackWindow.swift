@@ -511,7 +511,7 @@ private struct Card: View {
 
     private var dictationBar: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(st.dictation.text.isEmpty ? "Listening…" : st.dictation.text).font(.system(size: 14)).opacity(st.dictation.text.isEmpty ? 0.55 : 1).lineLimit(3)
+            Text(st.dictation.text.isEmpty ? (st.dictation.source.map { "Listening on \($0)…" } ?? "Listening…") : st.dictation.text).font(.system(size: 14)).opacity(st.dictation.text.isEmpty ? 0.55 : 1).lineLimit(3)
             HStack(spacing: 10) {
                 Text(st.tidying ? "Tidying…" : "Listening · on this Mac").font(.system(size: 12)).opacity(0.7)
                 Spacer()
