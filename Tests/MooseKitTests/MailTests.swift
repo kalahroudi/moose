@@ -43,6 +43,23 @@ final class MailTests: XCTestCase {
         XCTAssertEqual(Stacker.stacks(for: .everythingElse, messages: scored, favourites: []).map(\.key), ["bob@x.com"])
     }
 
+    func testRefineSortsAndFilters() {
+        let ms = [msg("a@x.com", "Old invoice", age: 20 * 86400), msg("b@x.com", "Hello", age: 100), msg("a@x.com", "New invoice", age: 50), msg("n@x.com", "Weekly", bulk: true, age: 5000)]
+        let scored = ms.map { ScoredMessage(message: $0, score: 10, reasons: [], muted: nil) }
+        let stacks = Dictionary(grouping: scored, by: \.message.fromEmail).map { MailStack(key: $0.key, name: $0.key, messages: $0.value, favourite: false) }
+        var q = StackQuery()
+        q.sort = .newest
+        XCTAssertEqual(Stacker.refine(stacks, q).map(\.key), ["a@x.com", "b@x.com", "n@x.com"])
+        XCTAssertEqual(Stacker.refine(stacks, q).first { $0.key == "a@x.com" }?.messages.map(\.message.subject), ["New invoice", "Old invoice"])
+        q.range = .week
+        XCTAssertEqual(Stacker.refine(stacks, q).first { $0.key == "a@x.com" }?.messages.count, 1)
+        q.range = .any; q.origin = .automated
+        XCTAssertEqual(Stacker.refine(stacks, q).map(\.key), ["n@x.com"])
+        q.origin = .all; q.text = "invoice"
+        XCTAssertEqual(Stacker.refine(stacks, q).map(\.key), ["a@x.com"])
+        XCTAssertEqual(Stacker.flatten(stacks, sort: .oldest).first?.message.subject, "Old invoice")
+    }
+
     func testRuleParser() {
         XCTAssertEqual(RuleParser.parse("mute newsletters, promos")?.action, .mute)
         XCTAssertEqual(RuleParser.parse("mute from news@club.com")?.senders, ["news@club.com"])

@@ -31,6 +31,7 @@ final class Nav {
     var account: String?              // filter the stack views to one address
     var open: MailMessage?            // the message being read
     var settingsTab: SettingsPane.Tab = .general
+    let list = ListState()            // filters, sort and selection of the stack lists
 }
 
 /// The Manager window: a fixed sidebar (collapsible to icons) and a main pane that uses the full width.
