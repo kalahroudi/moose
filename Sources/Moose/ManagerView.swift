@@ -107,6 +107,14 @@ struct Sidebar: View {
                     Image(systemName: "sidebar.left").foregroundStyle(.secondary).padding(4).contentShape(Rectangle())
                 }.buttonStyle(.plain).help(collapsed ? "Expand sidebar" : "Collapse to icons").accessibilityLabel(collapsed ? "Expand sidebar" : "Collapse sidebar")
             }.padding(.top, 14).padding(.bottom, 8).padding(.horizontal, collapsed ? 0 : 6)
+            Button { AppDelegate.shared.showCompose() } label: {
+                HStack(spacing: 9) {
+                    Image(systemName: "square.and.pencil").font(.system(size: 13.5)).frame(width: 20)
+                    if !collapsed { Text("New email").font(.system(size: 13, weight: .semibold)); Spacer(minLength: 0) }
+                }
+                .padding(.horizontal, 10).padding(.vertical, 6).frame(maxWidth: .infinity, alignment: collapsed ? .center : .leading)
+                .foregroundStyle(Theme.onAccent).background(Theme.accent, in: RoundedRectangle(cornerRadius: 7)).contentShape(RoundedRectangle(cornerRadius: 7))
+            }.buttonStyle(.plain).help("New email (⌘N)").accessibilityLabel("New email").disabled(!mail.hasAccount).dimWhenDisabled()
             if !collapsed { label("Stacks") }
             ForEach([Pane.priority, .favourites, .everything, .muted]) { item($0, count: mail.hasAccount ? mail.count($0.mailView!) : nil) }
             if mail.hasAccount { SidebarFolders(collapsed: collapsed) }
@@ -180,7 +188,7 @@ struct OutboxBar: View {
                     ForEach(mail.outbox) { p in
                         HStack(spacing: 10) {
                             Image(systemName: "paperplane").foregroundStyle(Theme.accent)
-                            Text("\(p.byAgent ? "Agent reply" : "Reply") to \(p.to) sends in \(max(0, Int(p.deadline.timeIntervalSince(ctx.date).rounded(.up)))) s").font(.system(size: 12.5))
+                            Text("\(p.byAgent ? (p.isReply ? "Agent reply" : "Agent email") : (p.isReply ? "Reply" : "Email")) to \(p.to) sends in \(max(0, Int(p.deadline.timeIntervalSince(ctx.date).rounded(.up)))) s").font(.system(size: 12.5))
                             Spacer()
                             Button("Undo") { mail.cancel(p) }.buttonStyle(Pill())
                         }.padding(.horizontal, 12).padding(.vertical, 8).background(Theme.card, in: RoundedRectangle(cornerRadius: 9)).overlay(RoundedRectangle(cornerRadius: 9).stroke(Theme.accent.opacity(0.5)))

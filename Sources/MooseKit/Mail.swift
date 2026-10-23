@@ -113,13 +113,13 @@ public enum StackSort: String, CaseIterable, Sendable {
 }
 
 public enum DateRange: String, CaseIterable, Sendable {
-    case any, today, week, month
+    case any, today, week, month, custom
     public var label: String {
-        switch self { case .any: "Any time"; case .today: "Today"; case .week: "Past week"; case .month: "Past month" }
+        switch self { case .any: "Any time"; case .today: "Today"; case .week: "Past week"; case .month: "Past month"; case .custom: "Custom range…" }
     }
     public func cutoff(now: Date = Date(), calendar: Calendar = .current) -> Date? {
         switch self {
-        case .any: nil
+        case .any, .custom: nil
         case .today: calendar.startOfDay(for: now)
         case .week: now.addingTimeInterval(-7 * 86400)
         case .month: now.addingTimeInterval(-30 * 86400)
@@ -136,6 +136,9 @@ public enum Origin: String, CaseIterable, Sendable {
 public struct StackQuery: Equatable, Sendable {
     public var sort: StackSort = .priority
     public var range: DateRange = .any
+    /// Used when `range` is `.custom`; either end may be open. `to` is inclusive of the whole day.
+    public var from: Date?
+    public var to: Date?
     public var origin: Origin = .all
     public var text = ""
     public var account: String?
@@ -149,7 +152,13 @@ public extension Stacker {
     /// otherwise only the messages that match survive. Stacks left empty are dropped.
     static func refine(_ stacks: [MailStack], _ q: StackQuery, now: Date = Date()) -> [MailStack] {
         let needle = q.text.lowercased()
-        let cutoff = q.range.cutoff(now: now)
+        var cutoff = q.range.cutoff(now: now)
+        var ceiling: Date?
+        if q.range == .custom {
+            let cal = Calendar.current
+            cutoff = q.from.map { cal.startOfDay(for: $0) }
+            ceiling = q.to.flatMap { cal.date(byAdding: .day, value: 1, to: cal.startOfDay(for: $0)) }
+        }
         var out: [MailStack] = []
         for s in stacks {
             let senderHit = !needle.isEmpty && (s.name.lowercased().contains(needle) || s.key.contains(needle))
@@ -157,6 +166,7 @@ public extension Stacker {
                 let m = sm.message
                 if let a = q.account, m.account != a { return false }
                 if let c = cutoff, m.date < c { return false }
+                if let c = ceiling, m.date >= c { return false }
                 switch q.origin { case .all: break; case .people: if m.bulkHeader { return false }; case .automated: if !m.bulkHeader { return false } }
                 return needle.isEmpty || senderHit || m.subject.lowercased().contains(needle) || m.snippet.lowercased().contains(needle)
             }

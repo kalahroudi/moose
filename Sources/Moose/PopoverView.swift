@@ -59,6 +59,7 @@ struct PopoverView: View {
         HStack(spacing: 12) {
             Button("Stack · \(mail.count(.priority))") { AppDelegate.shared.showStack() }.buttonStyle(Pill(kind: .primary)).lineLimit(1).fixedSize().disabled(mail.count(.priority) == 0)
             Button("Open Moose") { openManager(.priority) }.buttonStyle(Pill()).lineLimit(1).fixedSize()
+            Button { AppDelegate.shared.showCompose() } label: { Image(systemName: "square.and.pencil").padding(4).contentShape(Rectangle()) }.buttonStyle(.plain).foregroundStyle(.secondary).help("New email (⌘N)").accessibilityLabel("New email").disabled(!mail.hasAccount)
             let muted = mail.mutedSummary().reduce(0) { $0 + $1.1 }
             if muted > 0 { Button { openManager(.muted) } label: { Label("\(muted)", systemImage: "bell.slash").font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1).fixedSize().contentShape(Rectangle()).help("\(muted) muted") }.buttonStyle(.plain) }
             Spacer()

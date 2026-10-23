@@ -20,6 +20,7 @@ final class StackModel {
     var showAll = false
     var scope: Scope = .sender
     var reply = ""
+    var cc = ""
     var drafting = false
     private var handled = Set<String>()
     private var bodies: [String: String] = [:]
@@ -47,7 +48,7 @@ final class StackModel {
         }
     }
 
-    /// Every place the deck can come from, in the order ⌘[ and ⌘] walk through them.
+    /// Every place the deck can come from, in the order ⇧⌘[ and ⇧⌘] walk through them.
     var sources: [Source] { [.priority] + mail.folderNames.map { .folder($0) } }
     func cycleSource(_ d: Int) {
         let all = sources
@@ -61,7 +62,7 @@ final class StackModel {
     func folderRenamed(from old: String, to new: String) { if folder.map({ Folders.key($0) == Folders.key(old) }) == true { source = .folder(new) } }
     func folderDeleted(_ name: String) { if folder.map({ Folders.key($0) == Folders.key(name) }) == true { setSource(.priority) } }
 
-    func release() { items = []; handled = []; bodies = [:]; reply = ""; source = .priority; loading = false; reset() }
+    func release() { items = []; handled = []; bodies = [:]; reply = ""; cc = ""; source = .priority; loading = false; reset() }
     private func reset() { mode = .browse; showAll = false; scope = .sender }
 
     private var pool: [MailMessage] {
@@ -99,7 +100,7 @@ final class StackModel {
 
     func startReply() {
         guard let m = message else { return }
-        mode = .replying; showAll = false
+        mode = .replying; showAll = false; cc = ""
         reply = mail.data.composeDrafts[m.id] ?? ""
         if reply.isEmpty, ClaudeDrafter.available { draft(.normal) }
     }
@@ -117,13 +118,22 @@ final class StackModel {
 
     func cancelReply() { mode = .browse }
 
+    func toggleReplyAll() {
+        guard let m = message else { return }
+        if !cc.isEmpty { cc = ""; return }
+        Task {
+            do { cc = try await mail.replyAllCc(for: m); if cc.isEmpty { AppModel.shared.show("Nobody else was on this message.") } }
+            catch { AppLog.error(error, context: "stack reply all"); AppModel.shared.show(UserError.message(for: error, action: "Find the other recipients"), error: true) }
+        }
+    }
+
     func send() {
         guard let m = message else { return }
         let body = reply
         Task {
             do {
-                _ = try await mail.queueReply(to: m, body: body, undoSeconds: 5, byAgent: false)
-                mail.setCompose(m.id, ""); reply = ""; handled.insert(m.id); mode = .browse
+                _ = try await mail.queueReply(to: m, body: body, cc: cc, undoSeconds: 5, byAgent: false)
+                mail.setCompose(m.id, ""); reply = ""; cc = ""; handled.insert(m.id); mode = .browse
             } catch { AppLog.error(error, context: "stack send"); AppModel.shared.show(UserError.message(for: error, action: "Send the reply"), error: true) }
         }
     }
@@ -160,8 +170,8 @@ final class StackMouse {
 
     func install() {
         guard monitor == nil else { return }
-        monitor = NSEvent.addLocalMonitorForEvents(matching: [.otherMouseDown, .scrollWheel]) { [weak self] e in
-            guard let self, e.window?.contentView is NSHostingView<StackView> else { return e }
+        monitor = NSEvent.addLocalMonitorForEvents(matching: [.otherMouseDown, .scrollWheel, .swipe]) { [weak self] e in
+            guard let self, e.window?.frameAutosaveName == "MooseStack" else { return e }
             return MainActor.assumeIsolated { self.handle(e) ? nil : e }
         }
     }
@@ -171,6 +181,10 @@ final class StackMouse {
     private func handle(_ e: NSEvent) -> Bool {
         let st = StackModel.shared
         guard st.mode == .browse, !st.showAll else { return false }
+        if e.type == .swipe {   // some mouse drivers turn back/forward into a horizontal swipe
+            if e.deltaX == 0 { return false }
+            st.step(e.deltaX > 0 ? -1 : 1); return true
+        }
         if e.type == .otherMouseDown {
             switch e.buttonNumber {
             case 3: st.step(-1); return true
@@ -210,7 +224,6 @@ struct StackView: View {
         .frame(minWidth: 520, minHeight: 460)
         .overlay(alignment: .bottom) { ToastView() }
         .onAppear { model.setStackVisible(true); StackMouse.shared.install() }
-        .onDisappear { StackMouse.shared.remove() }
         .onChange(of: mail.lastSync) { _, _ in if st.live.isEmpty { st.rebuild() } }
     }
 
@@ -231,7 +244,7 @@ struct StackView: View {
             .padding(.horizontal, 10).padding(.vertical, 4).foregroundStyle(Color.primary.opacity(0.85))
             .background(Theme.card, in: RoundedRectangle(cornerRadius: 8)).overlay(RoundedRectangle(cornerRadius: 8).stroke(Theme.hairline))
         }
-        .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize().help("Choose what to go through  ⌘[ ⌘]")
+        .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize().help("Choose what to go through  ⇧⌘[ ⇧⌘]")
     }
 
     private func count(_ s: StackModel.Source) -> String {
@@ -320,6 +333,8 @@ struct StackView: View {
                 Button("") { st.step(1) }.keyboardShortcut(.rightArrow, modifiers: [])
                 Button("") { st.step(-1) }.keyboardShortcut(.upArrow, modifiers: [])
                 Button("") { st.step(1) }.keyboardShortcut(.downArrow, modifiers: [])
+                Button("") { st.step(-1) }.keyboardShortcut("[", modifiers: .command)   // drivers that map back/forward to ⌘[ ⌘]
+                Button("") { st.step(1) }.keyboardShortcut("]", modifiers: .command)
                 Button("") { st.step(-1) }.keyboardShortcut("k", modifiers: [])
                 Button("") { st.step(1) }.keyboardShortcut("j", modifiers: [])
                 Button("") { st.read() }.keyboardShortcut(.space, modifiers: [])
@@ -334,8 +349,8 @@ struct StackView: View {
                 Button("") { if st.folder == nil { st.applyAll(.archive) } }.keyboardShortcut("e", modifiers: .shift)
                 Button("") { st.moveToInbox() }.keyboardShortcut("i", modifiers: [])
                 Button("") { if st.folder != nil { st.applyAll(.unfile) } }.keyboardShortcut("i", modifiers: .shift)
-                Button("") { st.cycleSource(-1) }.keyboardShortcut("[", modifiers: .command)
-                Button("") { st.cycleSource(1) }.keyboardShortcut("]", modifiers: .command)
+                Button("") { st.cycleSource(-1) }.keyboardShortcut("[", modifiers: [.command, .shift])
+                Button("") { st.cycleSource(1) }.keyboardShortcut("]", modifiers: [.command, .shift])
                 Button("") { st.applyAll(.markRead) }.keyboardShortcut("u", modifiers: .shift)
                 Button("") { mail.undo() }.keyboardShortcut("z", modifiers: .command)
             }
@@ -382,11 +397,13 @@ private struct Card: View {
             Divider()
             HStack {
                 Text(st.drafting ? "Claude is writing…" : ClaudeDrafter.available ? "Reply · drafted by Claude in your voice · edit freely" : "Reply").font(.system(size: 12)).foregroundStyle(.secondary)
+                Button(st.cc.isEmpty ? "Reply all" : "Just reply") { st.toggleReplyAll() }.buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(Theme.accent)
                 Spacer()
                 if ClaudeDrafter.available && !st.drafting {
                     ForEach([DraftTone.shorter, .warmer, .decline, .askForCall], id: \.self) { t in Button(t.label) { st.draft(t) }.buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(Theme.accent) }
                 }
             }
+            if !st.cc.isEmpty { Text("Cc: \(st.cc)").font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(2) }
             TextEditor(text: Bindable(st).reply).font(.system(size: 14.5)).scrollContentBackground(.hidden).padding(8).frame(minHeight: 120, maxHeight: 240)
                 .background(Theme.pane, in: RoundedRectangle(cornerRadius: 10)).overlay(RoundedRectangle(cornerRadius: 10).stroke(Theme.accent))
                 .onChange(of: st.reply) { _, v in MailModel.shared.setCompose(m.id, v) }

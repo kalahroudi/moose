@@ -215,6 +215,41 @@ final class DeckTests: XCTestCase {
         let g = Deck.group([m("a1", "x"), m("w1", "y"), m("a2", "z")])
         XCTAssertEqual(g["me@x.com"]?.count, 2); XCTAssertEqual(g["work@x.com"]?.count, 1)
     }
+
+    func testComposeParsesSubjectAndBody() {
+        let c = ClaudeDrafter.parseComposed("Subject: Friday meeting\n\nHi Maya,\n\nCan we move to Monday?\n\nM\n")
+        XCTAssertEqual(c, ComposedEmail(subject: "Friday meeting", body: "Hi Maya,\n\nCan we move to Monday?\n\nM"))
+        XCTAssertEqual(ClaudeDrafter.parseComposed("Just a body"), ComposedEmail(subject: "", body: "Just a body"))
+    }
+
+    func testComposePromptCarriesBriefAndExistingText() {
+        let p = ClaudeDrafter.composePrompt(brief: "ask for the invoice", to: "a@b.com", subject: "Invoice", body: "hi", userName: "M", styleSamples: [])
+        XCTAssertTrue(p.contains("ask for the invoice")); XCTAssertTrue(p.contains("a@b.com")); XCTAssertTrue(p.contains("Invoice")); XCTAssertTrue(p.contains("improve it"))
+    }
+
+    func testRawMessageWithAttachmentIsMultipart() throws {
+        let raw = MailText.rawMessage(from: "a@b.com", to: "c@d.com", subject: "Hi", body: "See file", attachments: [MailAttachment(filename: "report.pdf", mimeType: "application/pdf", data: Data("PDFDATA".utf8))])
+        var b64 = raw.replacingOccurrences(of: "-", with: "+").replacingOccurrences(of: "_", with: "/")
+        while b64.count % 4 != 0 { b64 += "=" }
+        let text = String(decoding: try XCTUnwrap(Data(base64Encoded: b64)), as: UTF8.self)
+        XCTAssertTrue(text.contains("multipart/mixed"))
+        XCTAssertTrue(text.contains("filename=\"report.pdf\""))
+        XCTAssertTrue(text.contains(Data("PDFDATA".utf8).base64EncodedString()))
+        XCTAssertTrue(text.contains("See file"))
+    }
+
+    func testSplitAddressesAndReplyAll() {
+        XCTAssertEqual(MailText.splitAddresses("Maya <m@a.com>, \"Chen, Li\" <li@b.com>; Me@X.com, m@a.com"), ["m@a.com", "li@b.com", "me@x.com"])
+        XCTAssertEqual(MailText.replyAllCc(to: "Me <me@x.com>, Bo <bo@c.com>", cc: "sender@y.com, li@b.com", replyingTo: "Sender@y.com", me: "me@x.com"), ["bo@c.com", "li@b.com"])
+    }
+
+    func testRawMessageHasCcAndBcc() throws {
+        let raw = MailText.rawMessage(from: "a@b.com", to: "c@d.com", subject: "Hi", body: "x", cc: "e@f.com", bcc: "g@h.com")
+        var b64 = raw.replacingOccurrences(of: "-", with: "+").replacingOccurrences(of: "_", with: "/")
+        while b64.count % 4 != 0 { b64 += "=" }
+        let text = String(decoding: try XCTUnwrap(Data(base64Encoded: b64)), as: UTF8.self)
+        XCTAssertTrue(text.contains("Cc: e@f.com")); XCTAssertTrue(text.contains("Bcc: g@h.com"))
+    }
 }
 
 final class FolderTests: XCTestCase {
