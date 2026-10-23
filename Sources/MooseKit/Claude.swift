@@ -50,6 +50,54 @@ public enum ClaudeDrafter {
     }
 }
 
+/// A new (not reply) email as Claude writes it.
+public struct ComposedEmail: Equatable, Sendable {
+    public var subject: String
+    public var body: String
+    public init(subject: String, body: String) { self.subject = subject; self.body = body }
+}
+
+public extension ClaudeDrafter {
+    /// For a brand-new email. The brief and any existing text are the user's own words, so unlike a reply there is no untrusted content here.
+    static func composePrompt(brief: String, to: String, subject: String, body: String, userName: String, styleSamples: [String]) -> String {
+        var p = """
+        You write emails for \(userName.isEmpty ? "the user" : userName). Write a new email from their brief.
+        Rules: plain text only, no markdown, no placeholders like [Name]. Match the user's usual voice.
+        Output format: the first line is "Subject: " followed by the subject, then a blank line, then the email body. Nothing else.
+        """
+        if !styleSamples.isEmpty {
+            p += "\n\nExamples of how the user writes:\n" + styleSamples.prefix(4).map { "---\n" + MailText.excerpt($0, 400) }.joined(separator: "\n")
+        }
+        if !to.isEmpty { p += "\n\nRecipient: \(to)" }
+        if !subject.isEmpty { p += "\nKeep this subject unless the brief says otherwise: \(subject)" }
+        if !body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { p += "\n\nThe user's current text, improve it rather than starting over:\n\(String(body.prefix(6000)))" }
+        p += "\n\nBrief from the user: \(brief.isEmpty ? "Tidy up and finish the text above." : String(brief.prefix(2000)))"
+        return p
+    }
+
+    /// Splits "Subject: …" + blank line + body. Falls back to the whole text as the body when Claude skipped the subject line.
+    static func parseComposed(_ text: String) -> ComposedEmail {
+        let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let lines = t.components(separatedBy: "\n")
+        if let first = lines.first, first.lowercased().hasPrefix("subject:") {
+            let subject = first.dropFirst(8).trimmingCharacters(in: .whitespaces)
+            let body = lines.dropFirst().joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+            return ComposedEmail(subject: subject, body: body)
+        }
+        return ComposedEmail(subject: "", body: t)
+    }
+
+    static func compose(brief: String, to: String = "", subject: String = "", body: String = "", userName: String = "", styleSamples: [String] = []) async throws -> ComposedEmail {
+        guard available else { throw UserFacingError("Claude isn't installed. Open Settings → Agents to set it up.") }
+        let p = composePrompt(brief: brief, to: to, subject: subject, body: body, userName: userName, styleSamples: styleSamples)
+        let r = try await Shell.run("claude", ["-p", "--tools", "", "--no-session-persistence", p], timeout: 120)
+        guard r.ok else { throw ShellError.failed(command: "claude -p", status: r.status, stderr: r.stderr) }
+        let out = parseComposed(r.stdout)
+        guard !out.body.isEmpty else { throw UserFacingError("Claude returned an empty email. Try again.") }
+        return out
+    }
+}
+
 /// What an agent may do with a send request, given the user's access setting.
 public enum SendDecision: Equatable, Sendable { case refuse(String), askUser, sendAfterUndo }
 

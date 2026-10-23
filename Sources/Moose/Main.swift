@@ -66,7 +66,7 @@ enum MooseMain {
             item("Paste", #selector(NSText.paste(_:)), "v"), item("Select All", #selector(NSText.selectAll(_:)), "a"),
         ])
         let panes: [Pane] = [.priority, .favourites, .everything, .muted]
-        add("Mail", [item("Open Stack", #selector(AppDelegate.showStack), "t", target: delegate), item("Check for New Mail", #selector(AppDelegate.checkMail), "r", target: delegate), .separator()]
+        add("Mail", [item("New Email", #selector(AppDelegate.showCompose), "n", target: delegate), item("Open Stack", #selector(AppDelegate.showStack), "t", target: delegate), item("Check for New Mail", #selector(AppDelegate.checkMail), "r", target: delegate), .separator()]
             + panes.enumerated().map { n, p in let i = item(p.title, #selector(AppDelegate.goPane(_:)), "\(n + 1)", target: delegate); i.tag = n; return i })
         add("Window", [
             item("Minimize", #selector(NSWindow.performMiniaturize(_:)), "m"),

@@ -12,6 +12,7 @@ struct PendingSend: Identifiable, Equatable {
     var subject: String
     var deadline: Date
     var byAgent: Bool
+    var isReply = true
 }
 
 /// The mail brain of the app: owns the data file, Gmail clients, the outbox and the control API for agents.
@@ -334,25 +335,54 @@ final class MailModel {
 
     /// Saves a Gmail draft, then sends it after the undo window. The window can be cancelled from the outbox banner.
     @discardableResult
-    func queueReply(to m: MailMessage, body: String, undoSeconds: Int, byAgent: Bool) async throws -> PendingSend {
-        guard let g = gmail(m.account) else { throw UserFacingError("That account isn't connected any more.") }
-        let draft = try await g.createDraft(to: m.fromEmail, subject: MailText.replySubject(m.subject), body: body + (data.sendSignature.isEmpty ? "" : "\n\n" + data.sendSignature),
-                                            threadId: m.threadId, inReplyTo: m.messageIDHeader, references: m.referencesHeader)
-        let p = PendingSend(draftID: draft, account: m.account, to: m.fromEmail, subject: MailText.replySubject(m.subject), deadline: Date().addingTimeInterval(Double(undoSeconds)), byAgent: byAgent)
+    func queueReply(to m: MailMessage, body: String, cc: String = "", undoSeconds: Int, byAgent: Bool) async throws -> PendingSend {
+        try await queueSend(account: m.account, to: m.fromEmail, cc: cc, subject: MailText.replySubject(m.subject), body: body, threadId: m.threadId,
+                            inReplyTo: m.messageIDHeader, references: m.referencesHeader, undoSeconds: undoSeconds, byAgent: byAgent) { self.markRead(m) }
+    }
+
+    /// A brand-new email (not a reply), sent the same way: draft first, then sent after the undo window.
+    @discardableResult
+    func queueNew(account: String, to: String, cc: String = "", bcc: String = "", subject: String, body: String, attachments: [MailAttachment] = [], undoSeconds: Int, byAgent: Bool) async throws -> PendingSend {
+        try await queueSend(account: account, to: to, cc: cc, bcc: bcc, subject: subject, body: body, attachments: attachments, threadId: nil, inReplyTo: nil, references: nil, undoSeconds: undoSeconds, byAgent: byAgent, onSent: nil)
+    }
+
+    private func queueSend(account: String, to: String, cc: String = "", bcc: String = "", subject: String, body: String, attachments: [MailAttachment] = [], threadId: String?, inReplyTo: String?, references: String?,
+                           undoSeconds: Int, byAgent: Bool, onSent: (() -> Void)?) async throws -> PendingSend {
+        guard let g = gmail(account) else { throw UserFacingError("That account isn't connected any more.") }
+        let draft = try await g.createDraft(to: to, subject: subject, body: body + (data.sendSignature.isEmpty ? "" : "\n\n" + data.sendSignature),
+                                            threadId: threadId, inReplyTo: inReplyTo, references: references, attachments: attachments, cc: cc, bcc: bcc)
+        let p = PendingSend(draftID: draft, account: account, to: to, subject: subject, deadline: Date().addingTimeInterval(Double(undoSeconds)), byAgent: byAgent, isReply: threadId != nil)
         outbox.append(p)
         Task {
             try? await Task.sleep(for: .seconds(undoSeconds))
             guard outbox.contains(p) else { return }
             outbox.removeAll { $0 == p }
-            do { try await g.sendDraft(draft); markRead(m); AppModel.shared.show("Sent to \(p.to)") }
+            do { try await g.sendDraft(draft); onSent?(); AppModel.shared.show("Sent to \(p.to)") }
             catch { AppLog.error(error, context: "send draft"); AppModel.shared.show("Couldn't send. The draft is saved in Gmail so nothing is lost.", error: true) }
         }
         return p
     }
 
-    func saveDraftOnly(to m: MailMessage, body: String) async throws -> String {
+    func saveNewDraft(account: String, to: String, cc: String = "", bcc: String = "", subject: String, body: String, attachments: [MailAttachment] = []) async throws -> String {
+        guard let g = gmail(account) else { throw UserFacingError("That account isn't connected any more.") }
+        return try await g.createDraft(to: to, subject: subject, body: body, threadId: nil, inReplyTo: nil, references: nil, attachments: attachments, cc: cc, bcc: bcc)
+    }
+
+    func composeWithClaude(account: String, to: String, subject: String, body: String, brief: String) async throws -> ComposedEmail {
+        if sentSamples.isEmpty, let g = gmail(account) { sentSamples = await g.sentSamples() }
+        return try await ClaudeDrafter.compose(brief: brief, to: to, subject: subject, body: body, userName: userName, styleSamples: sentSamples)
+    }
+
+    func saveDraftOnly(to m: MailMessage, body: String, cc: String = "") async throws -> String {
         guard let g = gmail(m.account) else { throw UserFacingError("That account isn't connected any more.") }
-        return try await g.createDraft(to: m.fromEmail, subject: MailText.replySubject(m.subject), body: body, threadId: m.threadId, inReplyTo: m.messageIDHeader, references: m.referencesHeader)
+        return try await g.createDraft(to: m.fromEmail, subject: MailText.replySubject(m.subject), body: body, threadId: m.threadId, inReplyTo: m.messageIDHeader, references: m.referencesHeader, cc: cc)
+    }
+
+    /// Everyone else the message went to, as a Cc line for reply-all.
+    func replyAllCc(for m: MailMessage) async throws -> String {
+        guard let g = gmail(m.account) else { throw UserFacingError("That account isn't connected any more.") }
+        let h = try await g.recipientHeaders(m.id)
+        return MailText.replyAllCc(to: h.to, cc: h.cc, replyingTo: m.fromEmail, me: m.account).joined(separator: ", ")
     }
 
     func cancel(_ p: PendingSend) {
@@ -368,6 +398,12 @@ final class MailModel {
         do { try server.start(); control = server } catch { AppLog.error(error, context: "start control server") }
     }
     func stopControl() { control?.stop() }
+
+    /// The named account, or the first one when none is named.
+    func pickAccount(_ email: String?) -> String? {
+        guard let e = email?.lowercased() else { return data.accounts.first?.email }
+        return data.accounts.first { $0.email.lowercased() == e }?.email
+    }
 
     private func message(_ id: String) -> MailMessage? { data.messages.first { $0.id == id } }
 
@@ -404,24 +440,55 @@ final class MailModel {
             guard access.canDraft else { return fail("Agent access is read only. The user can change it in Moose → Settings → Agents.") }
             guard let id = str("message_id"), let m = message(id) else { return fail("Unknown message_id.") }
             do {
+                let cc = (a["reply_all"] as? Bool) == true ? try await replyAllCc(for: m) : ""
                 let body: String
                 if let b = str("body") { body = b } else { body = try await draftWithClaude(m, tone: DraftTone(rawValue: str("tone") ?? "") ?? .normal, extra: str("guidance") ?? "") }
-                let d = try await saveDraftOnly(to: m, body: body)
-                return ok("Draft saved in Gmail (draft_id \(d)):\n\n\(body)")
+                let d = try await saveDraftOnly(to: m, body: body, cc: cc)
+                return ok("Draft saved in Gmail (draft_id \(d))\(cc.isEmpty ? "" : ", Cc: \(cc)"):\n\n\(body)")
             } catch { AppLog.error(error, context: "agent draft"); return fail((error as? UserFacingError)?.message ?? "Couldn't write the draft.") }
         case "send_reply":
             guard let id = str("message_id"), let m = message(id), let body = str("body") else { return fail("Needs message_id and body.") }
+            let cc = (a["reply_all"] as? Bool) == true ? ((try? await replyAllCc(for: m)) ?? "") : ""
             switch SendPolicy.decide(access) {
             case .refuse(let why): return fail(why)
             case .askUser:
-                guard await Approval.ask(title: "An agent wants to send an email", detail: "To: \(m.fromEmail)\nSubject: \(MailText.replySubject(m.subject))\n\n\(String(body.prefix(1200)))") else {
+                guard await Approval.ask(title: "An agent wants to send an email", detail: "To: \(m.fromEmail)\(cc.isEmpty ? "" : "\nCc: \(cc)")\nSubject: \(MailText.replySubject(m.subject))\n\n\(String(body.prefix(1200)))") else {
                     return fail("The user declined, or didn't answer in time. Nothing was sent. The text is still available to save as a draft with draft_reply.")
                 }
-                do { _ = try await queueReply(to: m, body: body, undoSeconds: 5, byAgent: true); return ok("Approved by the user. Sending in 5 seconds.") }
+                do { _ = try await queueReply(to: m, body: body, cc: cc, undoSeconds: 5, byAgent: true); return ok("Approved by the user. Sending in 5 seconds.") }
                 catch { AppLog.error(error, context: "agent send"); return fail("Couldn't send.") }
             case .sendAfterUndo:
-                do { _ = try await queueReply(to: m, body: body, undoSeconds: data.undoSeconds, byAgent: true); AppLog.info("agent send queued to \(m.fromEmail)"); return ok("Queued. Sends in \(data.undoSeconds) s unless the user cancels.") }
+                do { _ = try await queueReply(to: m, body: body, cc: cc, undoSeconds: data.undoSeconds, byAgent: true); AppLog.info("agent send queued to \(m.fromEmail)"); return ok("Queued. Sends in \(data.undoSeconds) s unless the user cancels.") }
                 catch { AppLog.error(error, context: "agent send"); return fail("Couldn't send.") }
+            }
+        case "draft_email":
+            guard access.canDraft else { return fail("Agent access is read only. The user can change it in Moose → Settings → Agents.") }
+            guard let to = str("to") else { return fail("Missing to.") }
+            guard let account = pickAccount(str("account")) else { return fail("Unknown account. Use get_status to see the connected accounts.") }
+            do {
+                var subject = str("subject") ?? "", body = str("body") ?? ""
+                if body.isEmpty {
+                    guard let brief = str("brief") else { return fail("Give either body, or brief so Moose can write it with the user's Claude.") }
+                    let c = try await composeWithClaude(account: account, to: to, subject: subject, body: "", brief: brief)
+                    body = c.body; if subject.isEmpty { subject = c.subject }
+                }
+                let d = try await saveNewDraft(account: account, to: to, cc: str("cc") ?? "", bcc: str("bcc") ?? "", subject: subject, body: body)
+                return ok("Draft saved in Gmail (draft_id \(d)), not sent.\nTo: \(to)\(str("cc").map { "\nCc: \($0)" } ?? "")\(str("bcc").map { "\nBcc: \($0)" } ?? "")\nSubject: \(subject)\n\n\(body)")
+            } catch { AppLog.error(error, context: "agent compose"); return fail((error as? UserFacingError)?.message ?? "Couldn't write the email.") }
+        case "send_email":
+            guard let to = str("to"), let subject = str("subject"), let body = str("body") else { return fail("Needs to, subject and body.") }
+            guard let account = pickAccount(str("account")) else { return fail("Unknown account. Use get_status to see the connected accounts.") }
+            switch SendPolicy.decide(access) {
+            case .refuse(let why): return fail(why)
+            case .askUser:
+                guard await Approval.ask(title: "An agent wants to send an email", detail: "From: \(account)\nTo: \(to)\(str("cc").map { "\nCc: \($0)" } ?? "")\(str("bcc").map { "\nBcc: \($0)" } ?? "")\nSubject: \(subject)\n\n\(String(body.prefix(1200)))") else {
+                    return fail("The user declined, or didn't answer in time. Nothing was sent. The text can still be saved with draft_email.")
+                }
+                do { _ = try await queueNew(account: account, to: to, cc: str("cc") ?? "", bcc: str("bcc") ?? "", subject: subject, body: body, undoSeconds: 5, byAgent: true); return ok("Approved by the user. Sending in 5 seconds.") }
+                catch { AppLog.error(error, context: "agent send new"); return fail("Couldn't send.") }
+            case .sendAfterUndo:
+                do { _ = try await queueNew(account: account, to: to, cc: str("cc") ?? "", bcc: str("bcc") ?? "", subject: subject, body: body, undoSeconds: data.undoSeconds, byAgent: true); AppLog.info("agent send queued to \(to)"); return ok("Queued. Sends in \(data.undoSeconds) s unless the user cancels.") }
+                catch { AppLog.error(error, context: "agent send new"); return fail("Couldn't send.") }
             }
         default: return fail("Unknown tool.")
         }

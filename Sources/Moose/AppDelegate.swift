@@ -13,6 +13,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
     private let popover = NSPopover()
     private var managerWindow: NSWindow?
     private var stackWindow: NSWindow?
+    private var composeWindow: NSWindow?
     private let model = AppModel.shared
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -51,6 +52,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
     @objc private func statusClicked() {
         if NSApp.currentEvent?.type == .rightMouseUp {
             let m = NSMenu()
+            m.addItem(withTitle: "New Email", action: #selector(showCompose), keyEquivalent: "n").target = self
             m.addItem(withTitle: "Open Stack", action: #selector(showStack), keyEquivalent: "").target = self
             m.addItem(withTitle: "Open Moose", action: #selector(openManager), keyEquivalent: "").target = self
             m.addItem(withTitle: "Check for new mail", action: #selector(checkMail), keyEquivalent: "").target = self
@@ -119,7 +121,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
         NSApp.activate(ignoringOtherApps: true)
     }
 
+    /// A new email, written by hand or with Claude. ⌘N. The text survives closing the window.
+    @objc func showCompose() {
+        popover.performClose(nil)
+        if composeWindow == nil {
+            let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 620, height: 560),
+                             styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView], backing: .buffered, defer: false)
+            w.titlebarAppearsTransparent = true; w.titleVisibility = .hidden
+            w.isReleasedWhenClosed = false; w.minSize = NSSize(width: 520, height: 460)
+            w.setFrameAutosaveName("MooseCompose"); w.delegate = self
+            w.contentView = NSHostingView(rootView: ComposeView(close: { [weak self] in self?.composeWindow?.close() }))
+            if !w.setFrameUsingName("MooseCompose") { w.center() }
+            composeWindow = w
+        }
+        composeWindow?.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
     func windowWillClose(_ notification: Notification) {
+        if (notification.object as? NSWindow) === composeWindow {
+            composeWindow?.contentView = nil; composeWindow = nil
+            return
+        }
         if (notification.object as? NSWindow) === stackWindow {
             model.setStackVisible(false); MailModel.shared.flush()
             StackModel.shared.release()
