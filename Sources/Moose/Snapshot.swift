@@ -38,7 +38,22 @@ enum SnapshotMode {
                 return AnyView(PopoverShot())
             }
         }
-        return [pop(), pop(dark: true),
+        func stack(_ name: String, dark: Bool, _ configure: @escaping @MainActor (StackModel) -> Void) -> Shot {
+            Shot(name: name, dark: dark, size: CGSize(width: 680, height: 620)) {
+                MailModel.shared.loadDemo(Demo.data(), signedIn: true)
+                let st = StackModel.shared; st.rebuild(); configure(st)
+                return AnyView(StackView())
+            }
+        }
+        return [stack("stack", dark: true) { st in st.index = 1 },
+                stack("stack-reading", dark: false) { st in st.index = 0; st.read() },
+                stack("stack-reply", dark: false) { st in
+                    st.index = 0; st.mode = .replying
+                    st.reply = "Hi Maya, thanks. 30 days works for me. I'll sign off Thursday, no call needed.\nBest, M." },
+                stack("stack-all", dark: true) { st in st.index = 1; st.showAll = true },
+                stack("stack-undone", dark: false) { st in
+                    st.index = 2; MailModel.shared.apply(.archive, to: MailModel.shared.messages(ids: ["4", "5"]), sender: "Stripe") },
+                pop(), pop(dark: true),
                 manager("priority", .priority), manager("priority", .priority, dark: true),
                 manager("thread", .priority, open: true), manager("routing", .routing), manager("muting", .muting, dark: true),
                 manager("agents", .agents, dark: true), manager("setup", .priority, dark: true, setup: true), manager("settings", .settings, tab: .accounts),

@@ -57,9 +57,10 @@ struct PopoverView: View {
 
     private var footer: some View {
         HStack(spacing: 12) {
-            Button("Open Moose") { openManager(.priority) }.buttonStyle(Pill(kind: .primary))
+            Button("Stack · \(mail.count(.priority))") { AppDelegate.shared.showStack() }.buttonStyle(Pill(kind: .primary)).lineLimit(1).fixedSize().disabled(mail.count(.priority) == 0)
+            Button("Open Moose") { openManager(.priority) }.buttonStyle(Pill()).lineLimit(1).fixedSize()
             let muted = mail.mutedSummary().reduce(0) { $0 + $1.1 }
-            if muted > 0 { Button { openManager(.muted) } label: { Label("\(muted) muted", systemImage: "bell.slash").font(.system(size: 12)).foregroundStyle(.secondary).contentShape(Rectangle()) }.buttonStyle(.plain) }
+            if muted > 0 { Button { openManager(.muted) } label: { Label("\(muted)", systemImage: "bell.slash").font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1).fixedSize().contentShape(Rectangle()).help("\(muted) muted") }.buttonStyle(.plain) }
             Spacer()
             Button { openManager(.settings) } label: { Image(systemName: "gearshape").padding(4).contentShape(Rectangle()) }.buttonStyle(.plain).foregroundStyle(.secondary).help("Settings").accessibilityLabel("Settings")
             Button { NSApp.terminate(nil) } label: { Image(systemName: "power").padding(4).contentShape(Rectangle()) }.buttonStyle(.plain).foregroundStyle(.secondary).help("Quit Moose").accessibilityLabel("Quit")

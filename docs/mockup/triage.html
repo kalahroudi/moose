@@ -1,0 +1,99 @@
+<!doctype html><html><head><meta charset="utf-8"><title>moose — Stack mockup</title>
+<style>
+*{box-sizing:border-box;margin:0}
+body{font:14px/1.5 -apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif;background:#d9d4cb;padding:48px;color:#222;-webkit-font-smoothing:antialiased}
+h1{font-size:28px;letter-spacing:-.02em}.sub{color:#6b665d;margin:4px 0 8px}
+h2{font-size:12px;text-transform:uppercase;letter-spacing:.1em;color:#6b665d;margin:36px 0 14px}
+.row{display:flex;gap:28px;flex-wrap:wrap}
+.dark{--bg:#17201d;--card:#1e2926;--c2:#1a2421;--hair:#2a3733;--tx:#e8e4da;--mu:#8d9a94;--ac:#f0b26b;--onac:#2a1a05;--dng:#e57c6a}
+.light{--bg:#fbf9f5;--card:#fff;--c2:#f3efe7;--hair:#e4ded3;--tx:#25221d;--mu:#8a8478;--ac:#b8651b;--onac:#fff;--dng:#c0452f}
+.win{width:640px;height:560px;background:var(--bg);color:var(--tx);border-radius:12px;box-shadow:0 0 0 .5px rgba(0,0,0,.4),0 24px 60px rgba(0,0,0,.3);overflow:hidden;display:flex;flex-direction:column}
+.tb{height:38px;display:flex;align-items:center;padding:0 14px;gap:8px;flex:none}
+.dot{width:12px;height:12px;border-radius:50%;background:#ff5f57}.dot:nth-child(2){background:#febc2e}.dot:nth-child(3){background:#28c840}
+.nav{margin-left:auto;display:flex;align-items:center;gap:14px;color:var(--mu);font-size:13px}.nav b{font-weight:500;font-variant-numeric:tabular-nums}.nav i{font-style:normal;font-size:16px}
+.stage{flex:1;display:flex;flex-direction:column;align-items:center;padding:14px 40px 26px;min-height:0}
+.sw{position:relative;width:100%;flex:1;min-height:0;margin-bottom:22px;display:flex}
+.u{position:absolute;inset:0;border:1px solid var(--hair);background:var(--c2);border-radius:14px}
+.u1{transform:translateY(10px) scale(.965)}.u2{transform:translateY(19px) scale(.93);opacity:.6}
+.card{position:relative;z-index:1;width:100%;background:var(--card);border:1px solid var(--hair);border-radius:14px;box-shadow:0 10px 30px rgba(0,0,0,.14);padding:22px 26px;display:flex;flex-direction:column;overflow:hidden}
+.from{display:flex;align-items:baseline;gap:8px}.from b{font-size:16px}.from span{color:var(--mu);font-size:12.5px}.from .t{margin-left:auto}
+.sub2{font-size:19px;font-weight:700;letter-spacing:-.015em;margin:8px 0 14px}
+.txt{font-size:15px;line-height:1.7;overflow:hidden;flex:1}
+.fade{position:absolute;left:0;right:0;bottom:0;height:70px;background:linear-gradient(transparent,var(--card))}
+.act{display:flex;gap:10px;justify-content:center}
+.btn{border:1px solid var(--hair);background:var(--card);border-radius:10px;padding:9px 20px;font-weight:600;display:flex;gap:8px;align-items:center;white-space:nowrap}
+.btn.p{background:var(--ac);color:var(--onac);border-color:var(--ac)}.btn.d{color:var(--dng)}
+.btn kbd{font:11px ui-monospace,Menlo,monospace;opacity:.6;font-weight:400}
+.reply{margin-top:14px;border-top:1px solid var(--hair);padding-top:14px}
+.reply small{color:var(--mu);font-size:12px;display:block;margin-bottom:6px}
+.draft{border:1px solid var(--ac);border-radius:10px;padding:11px 13px;line-height:1.6}
+.btn.s{font-weight:500;color:var(--mu)}
+.scope{display:flex;background:var(--c2);border:1px solid var(--hair);border-radius:10px;padding:3px;gap:2px}.scope span{padding:6px 14px;border-radius:7px;color:var(--mu);font-weight:500}.scope span.on{background:var(--card);color:var(--tx);font-weight:600;box-shadow:0 1px 2px rgba(0,0,0,.15)}
+.bulk{width:100%;margin-bottom:14px;display:flex;flex-direction:column;gap:10px;align-items:center}.bulk .lbl{color:var(--mu);font-size:12px}
+.toast{position:absolute;left:50%;transform:translateX(-50%);top:46px;z-index:5;background:var(--tx);color:var(--bg);border-radius:11px;padding:10px 16px;display:flex;gap:16px;align-items:center;box-shadow:0 10px 30px rgba(0,0,0,.3);white-space:nowrap}.toast b{color:var(--ac);font-weight:700}.toast kbd{font:11px ui-monospace,Menlo,monospace;opacity:.6}
+.winr{position:relative}
+.empty{margin:auto;text-align:center}.empty b{display:block;font-size:24px;letter-spacing:-.02em}.empty span{color:var(--mu)}
+</style></head><body>
+<h1>moose — Stack mockup (v2, stripped down)</h1>
+<div class="sub">Just the stack. Move through it, read, reply, delete. No sidebar, scores, tags or extras.</div>
+
+<div class="row">
+<div><h2>1 · The stack</h2>
+<div class="win dark"><div class="tb"><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="nav"><i>‹</i><b>2 / 7</b><i>›</i></div></div>
+ <div class="stage"><div class="sw"><div class="u u2"></div><div class="u u1"></div>
+  <div class="card"><div class="from"><b>Stripe</b><span>billing@stripe.com</span><span class="t">7:30</span></div>
+   <div class="sub2">Payment of $240.00 failed</div>
+   <div class="txt">We couldn't charge your card ending in 4242 for your Pro plan ($240.00). Please update your payment method to avoid an interruption of your subscription.<br><br>We'll try again on Oct 26. If it fails a third time your account will be paused.<br><br>Stripe</div><div class="fade"></div></div></div>
+  <div class="act"><div class="btn">Read <kbd>Space</kbd></div><div class="btn p">Reply <kbd>R</kbd></div><div class="btn d">Delete <kbd>⌫</kbd></div><div class="btn s">All ▾ <kbd>A</kbd></div></div></div></div></div>
+
+<div><h2>2 · Reading</h2>
+<div class="win light"><div class="tb"><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="nav"><i>‹</i><b>1 / 7</b><i>›</i></div></div>
+ <div class="stage"><div class="sw"><div class="u u2"></div><div class="u u1"></div>
+  <div class="card"><div class="from"><b>Maya Chen</b><span>maya@acme.com</span><span class="t">9:41</span></div>
+   <div class="sub2">Contract redlines: can you sign off by Friday?</div>
+   <div class="txt">Hi,<br><br>I've addressed Legal's note on §4 and the termination clause is now 30 days. The payment schedule in §7 is unchanged.<br><br>Can you sign off by Friday so we can send it over? Happy to hop on a call if that's easier.<br><br>Two small things I still need from you: the signatory name for the cover page, and whether we keep the 12-month renewal term.<br><br>Thanks,<br>Maya</div></div></div>
+  <div class="act"><div class="btn p">Reply <kbd>R</kbd></div><div class="btn d">Delete <kbd>⌫</kbd></div></div></div></div></div>
+</div>
+
+<div class="row">
+<div><h2>3 · Replying</h2>
+<div class="win light"><div class="tb"><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="nav"><i>‹</i><b>1 / 7</b><i>›</i></div></div>
+ <div class="stage"><div class="sw"><div class="u u2"></div><div class="u u1"></div>
+  <div class="card"><div class="from"><b>Maya Chen</b><span>maya@acme.com</span><span class="t">9:41</span></div>
+   <div class="sub2" style="font-size:16px;margin-bottom:8px">Contract redlines: can you sign off by Friday?</div>
+   <div class="txt" style="flex:none;max-height:92px;color:var(--mu)">Can you sign off by Friday so we can send it over? Happy to hop on a call if that's easier. Maya</div>
+   <div class="reply"><small>Reply · drafted by Claude in your voice · edit freely</small><div class="draft">Hi Maya, thanks. 30 days works for me. I'll sign off Thursday, no call needed.<br>Best, M.</div></div></div></div>
+  <div class="act"><div class="btn">Cancel <kbd>Esc</kbd></div><div class="btn p">Send <kbd>⌘↩</kbd></div></div></div></div></div>
+
+<div><h2>4 · Empty</h2>
+<div class="win dark"><div class="tb"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div><div class="stage"><div class="empty"><b>Nothing needs you.</b><span>Priority mail will stack up here.</span></div></div></div></div>
+</div>
+
+<div class="row">
+<div><h2>5 · All (mass actions)</h2>
+<div class="win dark"><div class="tb"><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="nav"><i>‹</i><b>2 / 7</b><i>›</i></div></div>
+ <div class="stage"><div class="sw"><div class="u u2"></div><div class="u u1"></div>
+  <div class="card" style="opacity:.55"><div class="from"><b>Stripe</b><span>billing@stripe.com</span><span class="t">7:30</span></div>
+   <div class="sub2">Payment of $240.00 failed</div><div class="txt">We couldn't charge your card ending in 4242 for your Pro plan ($240.00)…</div></div></div>
+  <div class="bulk"><div class="scope"><span class="on">This sender · 2</span><span>Whole stack · 7</span></div><div class="lbl">Applies to</div></div>
+  <div class="act"><div class="btn p">Archive all <kbd>⇧E</kbd></div><div class="btn">Mark all read <kbd>⇧U</kbd></div><div class="btn d">Delete all <kbd>⇧⌫</kbd></div></div></div></div></div>
+
+<div><h2>6 · Done, with undo (no confirmation dialogs)</h2>
+<div class="win light winr"><div class="tb"><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="nav"><i>‹</i><b>2 / 5</b><i>›</i></div></div>
+ <div class="stage"><div class="sw"><div class="u u2"></div><div class="u u1"></div>
+  <div class="card"><div class="from"><b>Mum</b><span>mum@family.example</span><span class="t">Yesterday</span></div>
+   <div class="sub2">Sunday?</div><div class="txt">Are you coming for dinner? I need to know how much to cook.</div></div></div>
+  <div class="act"><div class="btn">Read <kbd>Space</kbd></div><div class="btn p">Reply <kbd>R</kbd></div><div class="btn d">Delete <kbd>⌫</kbd></div><div class="btn s">All ▾ <kbd>A</kbd></div></div></div>
+ <div class="toast"><span>Archived <b>2</b> from Stripe</span><span style="text-decoration:underline">Undo <kbd>⌘Z</kbd></span></div></div></div>
+</div>
+
+<h2>Rules of this view</h2>
+<ul style="margin-left:18px;max-width:760px;line-height:1.8;color:#4a463f">
+<li>One card at a time, best first. <b>← →</b> (or J / K) to move; the only chrome is the counter.</li>
+<li><b>Read</b> opens the full text. <b>Reply</b> opens a draft under the message (Claude writes it, you edit; ⌘↩ sends, 5 s undo). <b>Delete</b> moves it to Gmail's Trash, so it's recoverable for 30 days, and the next card appears. ⌘Z undoes the last delete.</li>
+<li>No scores, tags, summaries, sidebar, mute or star here. Those stay in the main window; this is a separate, quiet window.</li>
+<li><b>All ▾</b> (key A) is the one mass-action control. Pick the scope, <i>This sender</i> or <i>Whole stack</i>, with the count shown, then <b>Archive all</b>, <b>Mark all read</b> or <b>Delete all</b>. The shortcuts ⇧E, ⇧U and ⇧⌫ act on the chosen scope straight away (it defaults to this sender).</li>
+<li>No “are you sure?” dialogs. Every action runs at once and shows <i>Archived 2 from Stripe · Undo</i> for 10 seconds; ⌘Z restores them. Delete all is still Gmail’s Trash, so it stays recoverable for 30 days.</li>
+<li>Opens with ⌘T, or from "Open stack" in the menu bar popover.</li>
+</ul>
+</body></html>

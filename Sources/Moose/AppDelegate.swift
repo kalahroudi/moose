@@ -12,6 +12,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
     private var statusItem: NSStatusItem!
     private let popover = NSPopover()
     private var managerWindow: NSWindow?
+    private var stackWindow: NSWindow?
     private let model = AppModel.shared
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -50,6 +51,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
     @objc private func statusClicked() {
         if NSApp.currentEvent?.type == .rightMouseUp {
             let m = NSMenu()
+            m.addItem(withTitle: "Open Stack", action: #selector(showStack), keyEquivalent: "").target = self
             m.addItem(withTitle: "Open Moose", action: #selector(openManager), keyEquivalent: "").target = self
             m.addItem(withTitle: "Check for new mail", action: #selector(checkMail), keyEquivalent: "").target = self
             m.addItem(withTitle: "Settings…", action: #selector(openSettings), keyEquivalent: ",").target = self
@@ -99,7 +101,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
         model.setManagerVisible(true)
     }
 
+    /// The quiet Stack window: one card at a time. ⌘T.
+    @objc func showStack() {
+        popover.performClose(nil)
+        if stackWindow == nil {
+            StackModel.shared.rebuild()
+            let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 680, height: 620),
+                             styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView], backing: .buffered, defer: false)
+            w.titlebarAppearsTransparent = true; w.titleVisibility = .hidden
+            w.isReleasedWhenClosed = false; w.minSize = NSSize(width: 520, height: 460)
+            w.setFrameAutosaveName("MooseStack"); w.delegate = self
+            w.contentView = NSHostingView(rootView: StackView())
+            if !w.setFrameUsingName("MooseStack") { w.center() }
+            stackWindow = w
+        }
+        stackWindow?.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
     func windowWillClose(_ notification: Notification) {
+        if (notification.object as? NSWindow) === stackWindow {
+            model.setStackVisible(false); MailModel.shared.flush()
+            StackModel.shared.release()
+            stackWindow?.contentView = nil; stackWindow = nil
+            return
+        }
         guard (notification.object as? NSWindow) === managerWindow else { return }
         model.setManagerVisible(false)
         MailModel.shared.flush()                // saved first, then the window is dropped: a closed window holds no view memory

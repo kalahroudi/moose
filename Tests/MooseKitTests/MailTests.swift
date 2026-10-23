@@ -133,3 +133,37 @@ final class MailTests: XCTestCase {
 }
 
 extension MailMessage { func with(name: String) -> MailMessage { var m = self; m.fromName = name; return m } }
+
+final class DeckTests: XCTestCase {
+    func m(_ id: String, _ from: String, unread: Bool = true, labels: [String] = []) -> MailMessage {
+        MailMessage(id: id, threadId: id, account: id.hasPrefix("w") ? "work@x.com" : "me@x.com", fromName: from, fromEmail: from + "@x.com", subject: "Hi?", snippet: "", date: Date().addingTimeInterval(-600), unread: unread, labels: labels)
+    }
+
+    func testDeckIsUnreadPriorityOnlyBestFirstAndFrozenIds() {
+        let msgs = [m("a1", "maya"), m("a2", "maya"), m("b1", "bob", unread: false), m("c1", "shop", labels: ["CATEGORY_PROMOTIONS"])]
+        let deck = Deck.build(Priority.scoreAll(msgs, PriorityContext(favourites: ["maya@x.com"])), favourites: ["maya@x.com"])
+        XCTAssertEqual(deck.map(\.key), ["maya@x.com"])
+        XCTAssertEqual(Set(deck[0].ids), ["a1", "a2"])
+    }
+
+    func testCurrentSkipsHandledAndGoneMessages() {
+        let item = DeckItem(key: "k", name: "K", ids: ["1", "2", "3"])
+        XCTAssertEqual(item.current(present: ["1", "2", "3"], handled: []), "1")
+        XCTAssertEqual(item.current(present: ["2", "3"], handled: []), "2")
+        XCTAssertEqual(item.current(present: ["1", "2", "3"], handled: ["1", "2"]), "3")
+        XCTAssertNil(item.current(present: ["1"], handled: ["1"]))
+        XCTAssertEqual(item.remaining(present: ["1", "3"], handled: ["3"]), ["1"])
+    }
+
+    func testSummaries() {
+        XCTAssertEqual(StackAction.archive.summary(count: 2, sender: "Stripe"), "Archived 2 from Stripe")
+        XCTAssertEqual(StackAction.trash.summary(count: 7, sender: nil), "Deleted 7")
+        XCTAssertEqual(StackAction.markRead.summary(count: 1, sender: nil), "Marked 1 read")
+        XCTAssertEqual(StackAction.markRead.summary(count: 3, sender: "Mum"), "Marked 3 read from Mum")
+    }
+
+    func testGroupByAccount() {
+        let g = Deck.group([m("a1", "x"), m("w1", "y"), m("a2", "z")])
+        XCTAssertEqual(g["me@x.com"]?.count, 2); XCTAssertEqual(g["work@x.com"]?.count, 1)
+    }
+}

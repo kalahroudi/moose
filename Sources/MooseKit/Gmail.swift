@@ -131,6 +131,27 @@ public actor GmailClient {
     public func modify(_ id: String, add: [String] = [], remove: [String] = []) async throws {
         _ = try await request("/messages/\(id)/modify", method: "POST", body: ["addLabelIds": add, "removeLabelIds": remove])
     }
+    /// Up to 1000 messages in one request (Gmail's batchModify). Used for archive / mark read on many messages.
+    public func batchModify(_ ids: [String], add: [String] = [], remove: [String] = []) async throws {
+        for chunk in stride(from: 0, to: ids.count, by: 1000).map({ Array(ids[$0..<min($0 + 1000, ids.count)]) }) {
+            _ = try await request("/messages/batchModify", method: "POST", body: ["ids": chunk, "addLabelIds": add, "removeLabelIds": remove])
+        }
+    }
+
+    /// Moves to Trash (recoverable for 30 days). Moose never permanently deletes.
+    public func trash(_ id: String) async throws { _ = try await request("/messages/\(id)/trash", method: "POST") }
+    public func untrash(_ id: String) async throws { _ = try await request("/messages/\(id)/untrash", method: "POST") }
+
+    /// Trash many at once, a few in flight at a time.
+    public func trash(_ ids: [String], undo: Bool = false) async throws {
+        try await withThrowingTaskGroup(of: Void.self) { group in
+            var it = ids.makeIterator()
+            func next() { if let id = it.next() { group.addTask { [self] in undo ? try await self.untrash(id) : try await self.trash(id) } } }
+            for _ in 0..<6 { next() }
+            while try await group.next() != nil { next() }
+        }
+    }
+
     public func markRead(_ id: String) async throws { try await modify(id, remove: ["UNREAD"]) }
     public func archive(_ id: String) async throws { try await modify(id, remove: ["INBOX"]) }
 

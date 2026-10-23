@@ -39,6 +39,7 @@ final class AppModel {
     private var pollTask: Task<Void, Never>?
     private var popoverVisible = false
     private var managerVisible = false
+    private var stackVisible = false
 
     var settings: Prefs { Prefs.shared }
     /// True until every prerequisite is met: the app then shows the guided setup instead of empty screens.
@@ -50,9 +51,10 @@ final class AppModel {
 
     func setPopoverVisible(_ v: Bool) { popoverVisible = v; updatePolling() }
     func setManagerVisible(_ v: Bool) { managerVisible = v; updatePolling() }
+    func setStackVisible(_ v: Bool) { stackVisible = v; updatePolling() }
 
     private func updatePolling() {
-        let active = popoverVisible || managerVisible
+        let active = popoverVisible || managerVisible || stackVisible
         if active, pollTask == nil {
             pollTask = Task { [weak self] in
                 while !Task.isCancelled {

@@ -28,6 +28,9 @@ Moose is a text-only, stacked, multi-account Gmail client. Mail is grouped into 
 |---|---|
 | `get_status`, `list_stacks`, `search_messages`, `list_rules`, `read_message`, `sync_mail` | no |
 | `mark_read`, `archive_message`, `set_favourite`, `mute_sender`, `create_rule` | organises mail, reversible |
+| `archive_messages {message_ids}` | archives many, reversible (`undo_last`) |
+| `trash_messages {message_ids, confirm}` | moves to Gmail Trash (30 days), ask the user first |
+| `undo_last` | undoes the last archive / mark read / trash |
 | `delete_rule` | removes a rule |
 | `draft_reply` | creates a Gmail draft (needs Draft & ask or Full access) |
 | `send_reply {message_id, body, confirm}` | **sends email**, ask the user first |

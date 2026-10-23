@@ -36,6 +36,17 @@ final class MailModel {
     private var saveTask: Task<Void, Never>?
     private var sentSamples: [String] = []
     private var control: ControlServer?
+    private var pendingOps = 0
+
+    /// What "Undo" restores. One entry per action; ⌘Z walks back through the last few.
+    struct UndoEntry: Identifiable {
+        let id = UUID()
+        let action: StackAction
+        let messages: [MailMessage]      // exactly as they were
+        let text: String
+    }
+    private(set) var undoStack: [UndoEntry] = []
+    private(set) var undoToast: UndoEntry?
 
     private init() { data = store.load(); rescore() }
 
@@ -130,7 +141,7 @@ final class MailModel {
     // MARK: Sync
 
     func sync() async {
-        guard !syncing, let _ = client, hasAccount else { loadedOnce = true; return }
+        guard !syncing, pendingOps == 0, let _ = client, hasAccount else { loadedOnce = true; return }
         syncing = true; defer { syncing = false; loadedOnce = true }
         var failed = 0
         for acct in data.accounts {
@@ -187,6 +198,70 @@ final class MailModel {
     func fullText(_ m: MailMessage) async -> String {
         do { return try await gmail(m.account)?.fullText(m.id) ?? m.snippet } catch { AppLog.error(error, context: "read message"); return m.snippet }
     }
+
+    // MARK: Bulk actions with undo (no confirmation dialogs: every action has an exact inverse)
+
+    /// Applies an action to many messages at once. The local cache changes immediately; Gmail follows.
+    @discardableResult
+    func apply(_ action: StackAction, to messages: [MailMessage], sender: String? = nil) -> UndoEntry? {
+        let present = Set(data.messages.map(\.id))
+        let targets = messages.filter { present.contains($0.id) }
+        guard !targets.isEmpty else { return nil }
+        let entry = UndoEntry(action: action, messages: targets, text: action.summary(count: targets.count, sender: sender))
+        mutateLocal(action, targets, inverse: false)
+        remote(action, targets, inverse: false)
+        undoStack.append(entry); if undoStack.count > 20 { undoStack.removeFirst() }
+        undoToast = entry
+        Task { try? await Task.sleep(for: .seconds(10)); if undoToast?.id == entry.id { undoToast = nil } }
+        return entry
+    }
+
+    func undo() {
+        guard let entry = undoStack.popLast() else { return }
+        mutateLocal(entry.action, entry.messages, inverse: true)
+        remote(entry.action, entry.messages, inverse: true)
+        undoToast = nil
+        AppModel.shared.show("Undone: \(entry.text)")
+    }
+    var canUndo: Bool { !undoStack.isEmpty }
+
+    private func mutateLocal(_ action: StackAction, _ msgs: [MailMessage], inverse: Bool) {
+        let ids = Set(msgs.map(\.id))
+        switch (action, inverse) {
+        case (.archive, false), (.trash, false): data.messages.removeAll { ids.contains($0.id) }
+        case (.archive, true), (.trash, true): data.messages += msgs.filter { m in !data.messages.contains { $0.id == m.id } }
+        case (.markRead, false): for i in data.messages.indices where ids.contains(data.messages[i].id) { data.messages[i].unread = false }
+        case (.markRead, true):
+            let wasUnread = Set(msgs.filter(\.unread).map(\.id))
+            for i in data.messages.indices where wasUnread.contains(data.messages[i].id) { data.messages[i].unread = true }
+        }
+        persistSoon()
+    }
+
+    private func remote(_ action: StackAction, _ msgs: [MailMessage], inverse: Bool) {
+        if demo { return }
+        pendingOps += 1
+        Task {
+            defer { pendingOps -= 1 }
+            var failed = false
+            for (account, group) in Deck.group(msgs) {
+                guard let g = gmail(account) else { continue }
+                let ids = group.map(\.id)
+                do {
+                    switch (action, inverse) {
+                    case (.archive, false): try await g.batchModify(ids, remove: ["INBOX"])
+                    case (.archive, true): try await g.batchModify(ids, add: ["INBOX"])
+                    case (.markRead, false): try await g.batchModify(ids, remove: ["UNREAD"])
+                    case (.markRead, true): try await g.batchModify(group.filter(\.unread).map(\.id), add: ["UNREAD"])
+                    case (.trash, _): try await g.trash(ids, undo: inverse)
+                    }
+                } catch { failed = true; AppLog.error(error, context: "bulk \(action.rawValue)") }
+            }
+            if failed { AppModel.shared.show("Couldn't update Gmail for some messages. They'll reappear on the next refresh if so.", error: true) }
+        }
+    }
+
+    func messages(ids: [String]) -> [MailMessage] { let set = Set(ids); return data.messages.filter { set.contains($0.id) } }
 
     // MARK: Claude drafting and sending
 
@@ -246,6 +321,13 @@ final class MailModel {
             guard let id = str("message_id"), let m = message(id) else { return fail("Unknown message_id. Use list_stacks to find ids.") }
             let body = await fullText(m)
             return ok("From: \(m.displayName) <\(m.fromEmail)>\nAccount: \(m.account)\nSubject: \(m.subject)\nDate: \(m.date.formatted())\n\n\(MailText.excerpt(body, 6000).isEmpty ? m.snippet : String(body.prefix(6000)))")
+        case "archive_many", "trash_many":
+            guard let ids = a["message_ids"] as? [String], !ids.isEmpty else { return fail("Missing message_ids.") }
+            let msgs = messages(ids: Array(ids.prefix(500)))
+            guard !msgs.isEmpty else { return fail("None of those message ids are in the inbox.") }
+            let act: StackAction = tool == "trash_many" ? .trash : .archive
+            apply(act, to: msgs); return ok("\(act.summary(count: msgs.count, sender: nil)). The user can press Undo in Moose; \(act == .trash ? "Trash keeps mail for 30 days." : "mail stays in All Mail.")")
+        case "undo": guard canUndo else { return fail("Nothing to undo.") }; undo(); return ok("Undone.")
         case "mark_read": guard let id = str("message_id"), let m = message(id) else { return fail("Unknown message_id.") }; markRead(m); return ok("Marked read.")
         case "archive": guard let id = str("message_id"), let m = message(id) else { return fail("Unknown message_id.") }; archive(m); return ok("Archived.")
         case "set_favourite":

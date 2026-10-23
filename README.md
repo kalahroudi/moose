@@ -28,12 +28,15 @@ Never call a destructive tool without asking me first.
 - **Smart routing.** Plain-language rules: `favourite maya@acme.com`, `mute newsletters, promos`, `boost invoice, payment by 25`.
 - **Favourite stacking.** Star a sender and they always rank high and are never auto-muted.
 - **MCP-first.** `moose-mcp` ships inside the app. Everything you can do in the window, an agent can do. You decide how much: *Read only*, *Draft & ask* (every send needs your approval in a native dialog) or *Full access* (sends after an undo window).
+- **Stack window (⌘T).** The quiet way through your priority mail: one card at a time, nothing else. `←` `→` to move, **Read**, **Reply**, **Delete** (Gmail Trash, recoverable for 30 days), and **All ▾** for mass actions: archive, mark read or delete everything from this sender or the whole stack. No confirmation dialogs; every action shows an Undo bar and `⌘Z` restores it.
 - **Replies with Claude.** "Draft with Claude" runs your own Claude Code CLI headless, in your voice, with no tools enabled. Moose stores no API key.
 - **Light.** Pure Swift (SwiftUI + AppKit), zero dependencies. Nothing polls while the window and popover are closed; closing them frees their views.
 
-| Menu bar | Reply with Claude |
+| Stack window | Reply, inline |
 |---|---|
-| <img src="docs/screenshots/popover.png" width="420"> | <img src="docs/screenshots/thread.png" width="420"> |
+| <img src="docs/screenshots/stack.png" width="420"> | <img src="docs/screenshots/stack-reply.png" width="420"> |
+| **Mass actions** | **Menu bar** |
+| <img src="docs/screenshots/stack-all.png" width="420"> | <img src="docs/screenshots/popover.png" width="420"> |
 | **Routing** | **Agents** |
 | <img src="docs/screenshots/routing.png" width="420"> | <img src="docs/screenshots/agents-dark.png" width="420"> |
 
@@ -65,7 +68,7 @@ swift build && swift test && scripts/bundle.sh && open dist/Moose.app
 
 ## MCP tools
 
-`get_status` · `list_stacks` · `search_messages` · `list_rules` · `read_message` · `sync_mail` · `mark_read` · `archive_message` · `set_favourite` · `mute_sender` · `create_rule` · `delete_rule` · `draft_reply` · `send_reply`
+`get_status` · `list_stacks` · `search_messages` · `list_rules` · `read_message` · `sync_mail` · `mark_read` · `archive_message` · `archive_messages` · `trash_messages` · `undo_last` · `set_favourite` · `mute_sender` · `create_rule` · `delete_rule` · `draft_reply` · `send_reply`
 
 Connect agents from **Agents** in the sidebar (Claude Code, Claude Desktop, Cursor, Windsurf, Gemini CLI, Codex CLI), or manually:
 

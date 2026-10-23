@@ -42,6 +42,7 @@ struct StackListPane: View {
                 HStack(spacing: 8) {
                     if pane == .priority { Segmented(options: [(true, "Unread"), (false, "All")], selection: $unreadOnly) }
                     SearchBox(prompt: "Search", text: $query).frame(width: 170)
+                    Button("Stack") { AppDelegate.shared.showStack() }.buttonStyle(Pill()).help("Go through priority mail one card at a time  ⌘T")
                     Button { Task { await mail.sync() } } label: { Image(systemName: "arrow.clockwise").rotationEffect(.degrees(mail.syncing ? 180 : 0)) }
                         .buttonStyle(Pill()).disabled(mail.syncing).help("Check for new mail").accessibilityLabel("Check for new mail")
                 }
