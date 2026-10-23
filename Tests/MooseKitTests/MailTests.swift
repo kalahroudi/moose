@@ -96,6 +96,13 @@ final class MailTests: XCTestCase {
         XCTAssertNil(Priority.score(m, PriorityContext(rules: [r!], now: now.addingTimeInterval(5 * 86400))).muted)
     }
 
+    func testPhraseKeywordMatchesWordsInAnyOrder() {
+        let r = Rule(keywords: ["Oakfield School"], action: .file("Oakfield School"))
+        XCTAssertTrue(r.matches(msg("Oakfield Junior School <office@oakfield.example>", "Newsletter")))
+        XCTAssertTrue(r.matches(msg("Oakfield Inf and Nurs School <office@oakfield.example>", "Newsletter")))
+        XCTAssertFalse(r.matches(msg("Pine School <office@pine.example>", "Newsletter")))
+    }
+
     func testFolderRuleSurvivesStorage() throws {
         var d = MooseData(); d.rules = [Rule(keywords: ["school"], action: .file("School"))]
         let back = try JSONDecoder().decode(MooseData.self, from: JSONEncoder().encode(d))

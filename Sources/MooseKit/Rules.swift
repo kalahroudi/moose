@@ -37,7 +37,7 @@ public struct Rule: Codable, Identifiable, Hashable, Sendable {
         let from = (m.fromEmail + " " + m.fromName).lowercased()
         let text = (m.subject + " " + m.snippet + " " + from).lowercased()   // plain words also match the sender's name
         let senderOK = senders.isEmpty || senders.contains { from.contains($0) }
-        let wordOK = keywords.isEmpty || keywords.contains { text.contains($0) }
+        let wordOK = keywords.isEmpty || keywords.contains { k in k.split(separator: " ").allSatisfy { text.contains($0) } }   // a phrase matches when all its words appear, in any order
         return senderOK && wordOK
     }
 
