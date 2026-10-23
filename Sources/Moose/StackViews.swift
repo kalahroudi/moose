@@ -25,6 +25,15 @@ final class ListState {
     var expanded = Set<String>()
     var selection: String?             // message id
     var order: [MailMessage] = []      // rows as displayed, so the thread view can step to the next or previous message
+    var selecting = false              // checkbox mode for bulk archive / delete
+    var checked = Set<String>()        // message ids ticked in selecting mode
+
+    func toggle(_ ids: [String]) {
+        if ids.allSatisfy(checked.contains) { checked.subtract(ids) } else { checked.formUnion(ids) }
+    }
+    /// Where the rows on screen live, so bulk actions hit the folder's mail rather than the inbox cache.
+    var container: MailContainer { Nav.shared.pane == .folder ? Nav.shared.folder.map { .folder($0) } ?? .inbox : .inbox }
+    func endSelecting() { selecting = false; checked = [] }
 
     func isUnreadOnly(_ p: Pane) -> Bool { unreadPanes.contains(p) }
     func setUnreadOnly(_ on: Bool, _ p: Pane) { if on { unreadPanes.insert(p) } else { unreadPanes.remove(p) } }
@@ -112,6 +121,7 @@ struct StackListPane: View {
             }
             if let f = folderName { FolderRuleBar(name: f) }
             filterBar
+            if ls.selecting { selectionBar }
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(spacing: 12) {
@@ -135,6 +145,7 @@ struct StackListPane: View {
         .onChange(of: visible.map(\.id), initial: true) { _, _ in
             ls.order = visible.map(\.message)
             if let s = ls.selection, !visible.contains(where: { $0.id == s }) { ls.selection = nil }
+            ls.checked.formIntersection(flat.map(\.id))
         }
     }
 
@@ -194,11 +205,32 @@ struct StackListPane: View {
             FilterMenu(symbol: "person.2", options: Origin.allCases, label: \.label, selection: Bindable(ls).query.origin, active: ls.query.origin != .all)
             Spacer(minLength: 4)
             if ls.query.filtering { Button("Clear filters") { ls.clearFilters() }.buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(Theme.accent) }
+            Button(ls.selecting ? "Done" : "Select") { withAnimation(.easeOut(duration: 0.15)) { if ls.selecting { ls.endSelecting() } else { ls.selecting = true } } }
+                .buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(Theme.accent).help("Pick messages to archive or delete")
             if ls.layout == .stacks {
                 Button(ls.expandAll ? "Collapse all" : "Expand all") { withAnimation(.easeOut(duration: 0.15)) { ls.expandAll.toggle(); if !ls.expandAll { ls.expanded = [] } } }
                     .buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(Theme.accent).help("Show every message in every stack")
             }
         }.padding(.horizontal, 16).padding(.vertical, 8)
+    }
+
+    /// Shown in selecting mode: select everything in this view, then archive or delete it in one go.
+    private var selectionBar: some View {
+        let all = flat.map(\.id), n = ls.checked.count
+        return HStack(spacing: 8) {
+            Button { ls.toggle(all) } label: {
+                Label(n == all.count && n > 0 ? "Deselect all" : "Select all \(all.count)", systemImage: n == all.count && n > 0 ? "checkmark.square.fill" : n > 0 ? "minus.square" : "square")
+            }.buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(Theme.accent).disabled(all.isEmpty)
+            Text(n == 0 ? "Tick messages, or select them all." : "\(n) selected").font(.system(size: 12)).foregroundStyle(.secondary)
+            Spacer()
+            Button("Archive") { bulk(.archive) }.buttonStyle(Pill()).disabled(n == 0)
+            Button("Delete") { bulk(.trash) }.buttonStyle(Pill(kind: .danger)).disabled(n == 0).help("Moves to Trash. Undo is offered right after.")
+        }.padding(.horizontal, 16).padding(.vertical, 6).background(Theme.fill)
+    }
+
+    private func bulk(_ action: StackAction) {
+        mail.apply(action, to: ls.order.filter { ls.checked.contains($0.id) }, container: ls.container)
+        ls.checked = []
     }
 
     /// Invisible buttons that own the keyboard: ↑ ↓ move the highlight, ↩ opens, → ← expand and collapse the stack.
@@ -209,6 +241,7 @@ struct StackListPane: View {
             Button("") { if let m = ls.selected { nav.open = m; mail.markRead(m) } }.keyboardShortcut(.return, modifiers: [])
             Button("") { setExpanded(true) }.keyboardShortcut(.rightArrow, modifiers: [])
             Button("") { setExpanded(false) }.keyboardShortcut(.leftArrow, modifiers: [])
+            Button("") { if let m = ls.selected { mail.apply(.trash, to: [m], container: ls.container) } }.keyboardShortcut(.delete, modifiers: .command)
         }.opacity(0).frame(width: 0, height: 0).allowsHitTesting(false)
     }
 
@@ -242,6 +275,17 @@ struct StackListPane: View {
                 Spacer(); Text("Review").font(.system(size: 12)).foregroundStyle(Theme.accent)
             }.padding(.vertical, 10).contentShape(Rectangle())
         }.buttonStyle(.plain)
+    }
+}
+
+/// A tick box for selecting mode.
+private struct Checkbox: View {
+    let on: Bool
+    let action: () -> Void
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: on ? "checkmark.square.fill" : "square").font(.system(size: 14)).foregroundStyle(on ? Theme.accent : .secondary).contentShape(Rectangle())
+        }.buttonStyle(.plain).accessibilityLabel(on ? "Selected" : "Not selected")
     }
 }
 
@@ -391,6 +435,7 @@ struct StackCard: View {
 
     private var header: some View {
         HStack(spacing: 8) {
+            if nav.list.selecting { Checkbox(on: stack.messages.allSatisfy { nav.list.checked.contains($0.id) }) { nav.list.toggle(stack.messages.map(\.id)) }.help("Select this stack") }
             Button { mail.toggleFavourite(stack.key) } label: {
                 Image(systemName: stack.favourite ? "star.fill" : "star").foregroundStyle(stack.favourite ? Theme.accent : .secondary).padding(4).contentShape(Rectangle())
             }.buttonStyle(.plain).help(stack.favourite ? "Remove from favourites" : "Make a favourite").accessibilityLabel("Favourite")
@@ -415,13 +460,15 @@ struct MessageRow: View {
     var showAccount = false
     let mail = MailModel.shared
     @State private var hover = false
-    private var container: MailContainer { Nav.shared.pane == .folder ? Nav.shared.folder.map { .folder($0) } ?? .inbox : .inbox }
+    private var container: MailContainer { Nav.shared.list.container }
 
     var body: some View {
         let m = item.message
         let selected = Nav.shared.list.selection == m.id
-        Button { Nav.shared.list.selection = m.id; Nav.shared.open = m; mail.markRead(m) } label: {
+        let ls = Nav.shared.list
+        Button { if ls.selecting { ls.toggle([m.id]) } else { ls.selection = m.id; Nav.shared.open = m; mail.markRead(m) } } label: {
             HStack(alignment: .firstTextBaseline, spacing: 10) {
+                if ls.selecting { Checkbox(on: ls.checked.contains(m.id)) { ls.toggle([m.id]) } }
                 if Nav.shared.pane != .folder { Text("\(item.score)").font(.system(size: 11, weight: .semibold, design: .monospaced)).foregroundStyle(Fmt.scoreColor(item.score)).frame(width: 26, alignment: .trailing) }
                 if showFrom { Text(m.displayName).font(.system(size: 13, weight: m.unread ? .semibold : .regular)).lineLimit(1).frame(width: 110, alignment: .leading) }
                 (Text(m.subject).fontWeight(m.unread ? .semibold : .regular) + Text("  " + MailText.excerpt(m.snippet, 140)).foregroundColor(.secondary))
@@ -442,6 +489,7 @@ struct MessageRow: View {
                 Button("Move to inbox") { mail.apply(.unfile, to: [m], container: container) }
                 Button("Remove from folder (keep in All Mail)") { mail.archive(m) }
             } else { Button("Archive") { mail.archive(m) } }
+            Button("Delete") { mail.apply(.trash, to: [m], container: container) }
             Divider()
             Button("File everything from \(m.displayName) in a folder") { mail.fileSender(m) }
             Divider()
@@ -481,6 +529,7 @@ struct ThreadView: View {
                         Button("File everything from \(message.displayName) in a folder") { mail.fileSender(message) }
                     } label: { Image(systemName: "bell.slash") }.menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize().help("Mute or file this sender")
                     Button { mail.archive(message); Nav.shared.open = nil } label: { Image(systemName: "archivebox") }.buttonStyle(Pill()).help("Archive")
+                    Button { Nav.shared.open = nil; mail.apply(.trash, to: [message], container: ls.container) } label: { Image(systemName: "trash") }.buttonStyle(Pill()).help("Delete (moves to Trash, can be undone)").accessibilityLabel("Delete")
                     Button("Back") { Nav.shared.open = nil }.buttonStyle(Pill()).keyboardShortcut(.escape, modifiers: [])
                 }
             }
