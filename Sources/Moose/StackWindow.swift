@@ -203,6 +203,7 @@ struct StackView: View {
     private func layer(scale: CGFloat, y: CGFloat, opacity: Double) -> some View {
         RoundedRectangle(cornerRadius: 14).fill(Theme.sidebar).overlay(RoundedRectangle(cornerRadius: 14).stroke(Theme.hairline))
             .scaleEffect(scale).offset(y: y).opacity(opacity)
+            .onTapGesture { if st.mode == .browse { st.step(1) } }
     }
 
     @ViewBuilder private var actions: some View {
@@ -243,9 +244,12 @@ struct StackView: View {
             if !typing {
                 Button("") { st.step(-1) }.keyboardShortcut(.leftArrow, modifiers: [])
                 Button("") { st.step(1) }.keyboardShortcut(.rightArrow, modifiers: [])
+                Button("") { st.step(-1) }.keyboardShortcut(.upArrow, modifiers: [])
+                Button("") { st.step(1) }.keyboardShortcut(.downArrow, modifiers: [])
                 Button("") { st.step(-1) }.keyboardShortcut("k", modifiers: [])
                 Button("") { st.step(1) }.keyboardShortcut("j", modifiers: [])
                 Button("") { st.read() }.keyboardShortcut(.space, modifiers: [])
+                Button("") { st.read() }.keyboardShortcut(.return, modifiers: [])
                 Button("") { st.startReply() }.keyboardShortcut("r", modifiers: [])
                 // Backspace arrives as U+007F from a real keyboard; register both spellings so it always fires.
                 ForEach(["\u{7F}", "\u{8}"], id: \.self) { c in

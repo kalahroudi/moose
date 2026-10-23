@@ -14,56 +14,158 @@ enum Fmt {
     static func scoreColor(_ s: Int) -> Color { s >= 80 ? Theme.danger : s >= 60 ? Theme.warn : .secondary }
 }
 
+/// Filter, sort and selection state for the stack lists. Lives outside the view so opening a message and coming back keeps your place.
+@MainActor @Observable
+final class ListState {
+    enum Layout { case stacks, messages }
+    var layout: Layout = .stacks
+    var query = StackQuery()
+    var unreadPanes: Set<Pane> = [.priority]
+    var expandAll = false
+    var expanded = Set<String>()
+    var selection: String?             // message id
+    var order: [MailMessage] = []      // rows as displayed, so the thread view can step to the next or previous message
+
+    func isUnreadOnly(_ p: Pane) -> Bool { unreadPanes.contains(p) }
+    func setUnreadOnly(_ on: Bool, _ p: Pane) { if on { unreadPanes.insert(p) } else { unreadPanes.remove(p) } }
+    func clearFilters() { let s = query.sort; query = StackQuery(); query.sort = s }
+
+    func move(_ d: Int) {
+        guard !order.isEmpty else { return }
+        let i = order.firstIndex { $0.id == selection }
+        selection = order[max(0, min(order.count - 1, (i ?? (d > 0 ? -1 : order.count)) + d))].id
+    }
+    var selected: MailMessage? { order.first { $0.id == selection } }
+
+    /// Opens the message `d` steps from the one being read (thread view).
+    func step(from m: MailMessage, _ d: Int) {
+        guard let i = order.firstIndex(where: { $0.id == m.id }), order.indices.contains(i + d) else { return }
+        let n = order[i + d]
+        selection = n.id; Nav.shared.open = n; MailModel.shared.markRead(n)
+    }
+    func hasStep(from m: MailMessage, _ d: Int) -> Bool {
+        guard let i = order.firstIndex(where: { $0.id == m.id }) else { return false }
+        return order.indices.contains(i + d)
+    }
+}
+
 /// One of the four stack views: Priority, Favourites, Everything else, Muted.
 struct StackListPane: View {
     let pane: Pane
     let mail = MailModel.shared
     let nav = Nav.shared
-    @State private var unreadOnly = true
-    @State private var query = ""
+    var ls: ListState { nav.list }
+
+    private var query: StackQuery { var q = ls.query; q.account = nav.account; return q }
 
     private var stacks: [MailStack] {
-        var s = mail.stacks(pane.mailView!, unreadOnly: unreadOnly && pane == .priority)
-        if let a = nav.account { s = s.compactMap { st in let m = st.messages.filter { $0.message.account == a }; return m.isEmpty ? nil : MailStack(key: st.key, name: st.name, messages: m, favourite: st.favourite) } }
-        let q = query.lowercased()
-        if !q.isEmpty { s = s.filter { $0.name.lowercased().contains(q) || $0.key.contains(q) || $0.messages.contains { $0.message.subject.lowercased().contains(q) } } }
-        return s
+        Stacker.refine(mail.stacks(pane.mailView!, unreadOnly: ls.isUnreadOnly(pane)), query)
+    }
+    private var flat: [ScoredMessage] { Stacker.flatten(stacks, sort: ls.query.sort) }
+
+    private func isExpanded(_ s: MailStack) -> Bool { ls.expandAll || ls.expanded.contains(s.key) }
+
+    /// Rows in the order they appear on screen.
+    private func rows(_ stacks: [MailStack]) -> [ScoredMessage] {
+        ls.layout == .messages ? flat : stacks.flatMap { isExpanded($0) ? $0.messages : Array($0.messages.prefix(3)) }
     }
 
-    private var subtitle: String {
-        let n = stacks.count
-        let parts = ["\(n) \(n == 1 ? "stack" : "stacks")", nav.account ?? "\(mail.accounts.count) \(mail.accounts.count == 1 ? "account" : "accounts")"]
+    private func subtitle(_ stacks: [MailStack]) -> String {
+        let n = stacks.count, c = stacks.reduce(0) { $0 + $1.messages.count }
+        let parts = ["\(n) \(n == 1 ? "stack" : "stacks")", "\(c) \(c == 1 ? "message" : "messages")", nav.account ?? "\(mail.accounts.count) \(mail.accounts.count == 1 ? "account" : "accounts")"]
         return parts.joined(separator: " · ")
     }
 
     var body: some View {
+        let stacks = self.stacks
+        let visible = rows(stacks)
         VStack(spacing: 0) {
-            PaneHeader(title: pane.title, subtitle: subtitle) {
+            PaneHeader(title: pane.title, subtitle: subtitle(stacks)) {
                 HStack(spacing: 8) {
-                    if pane == .priority { Segmented(options: [(true, "Unread"), (false, "All")], selection: $unreadOnly) }
-                    SearchBox(prompt: "Search", text: $query).frame(minWidth: 90, idealWidth: 170, maxWidth: 170)
+                    SearchBox(prompt: "Search", text: Bindable(ls).query.text).frame(minWidth: 90, idealWidth: 170, maxWidth: 170)
                     Button("Stack") { AppDelegate.shared.showStack() }.buttonStyle(Pill()).help("Go through priority mail one card at a time  ⌘T")
                     Button { Task { await mail.sync() } } label: { Image(systemName: "arrow.clockwise").rotationEffect(.degrees(mail.syncing ? 180 : 0)) }
                         .buttonStyle(Pill()).disabled(mail.syncing).help("Check for new mail").accessibilityLabel("Check for new mail")
                 }
             }
-            ScrollView {
-                LazyVStack(spacing: 12) {
-                    ForEach(stacks) { StackCard(stack: $0) }
-                    if stacks.isEmpty { empty }
-                }.padding(16)
+            filterBar
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(spacing: 12) {
+                        if ls.layout == .messages { flatList(visible) } else { ForEach(stacks) { StackCard(stack: $0, expanded: expandedBinding($0)) } }
+                        if visible.isEmpty { empty }
+                    }.padding(16)
+                }
+                .onChange(of: ls.selection) { _, id in if let id { withAnimation(.easeOut(duration: 0.12)) { proxy.scrollTo(id) } } }
             }
             if pane == .priority, !mail.mutedSummary().isEmpty {
                 Divider()
                 mutedLine.padding(.horizontal, 16)
             }
+            keys
         }
+        .onChange(of: visible.map(\.id), initial: true) { _, _ in
+            ls.order = visible.map(\.message)
+            if let s = ls.selection, !visible.contains(where: { $0.id == s }) { ls.selection = nil }
+        }
+    }
+
+    private func expandedBinding(_ s: MailStack) -> Binding<Bool> {
+        Binding { isExpanded(s) } set: { on in
+            if on { ls.expanded.insert(s.key) } else { ls.expanded.remove(s.key); ls.expandAll = false }
+        }
+    }
+
+    private func flatList(_ rows: [ScoredMessage]) -> some View {
+        VStack(spacing: 0) {
+            ForEach(Array(rows.enumerated()), id: \.element.id) { i, m in
+                if i > 0 { Divider().opacity(0.6) }
+                MessageRow(item: m, showFrom: true, showAccount: mail.accounts.count > 1).id(m.id)
+            }
+        }
+        .background(Theme.card, in: RoundedRectangle(cornerRadius: 11))
+        .overlay(RoundedRectangle(cornerRadius: 11).stroke(Theme.hairline))
+    }
+
+    // MARK: Filter bar
+
+    private var filterBar: some View {
+        HStack(spacing: 8) {
+            Segmented(options: [(ListState.Layout.stacks, "Stacks"), (.messages, "All messages")], selection: Bindable(ls).layout)
+            Chip(title: "Unread", symbol: "circle.fill", active: ls.isUnreadOnly(pane)) { ls.setUnreadOnly(!ls.isUnreadOnly(pane), pane) }
+            FilterMenu(symbol: "arrow.up.arrow.down", options: StackSort.allCases, label: \.label, selection: Bindable(ls).query.sort, active: ls.query.sort != .priority)
+            FilterMenu(symbol: "calendar", options: DateRange.allCases, label: \.label, selection: Bindable(ls).query.range, active: ls.query.range != .any)
+            FilterMenu(symbol: "person.2", options: Origin.allCases, label: \.label, selection: Bindable(ls).query.origin, active: ls.query.origin != .all)
+            Spacer(minLength: 4)
+            if ls.query.filtering { Button("Clear filters") { ls.clearFilters() }.buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(Theme.accent) }
+            if ls.layout == .stacks {
+                Button(ls.expandAll ? "Collapse all" : "Expand all") { withAnimation(.easeOut(duration: 0.15)) { ls.expandAll.toggle(); if !ls.expandAll { ls.expanded = [] } } }
+                    .buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(Theme.accent).help("Show every message in every stack")
+            }
+        }.padding(.horizontal, 16).padding(.vertical, 8)
+    }
+
+    /// Invisible buttons that own the keyboard: ↑ ↓ move the highlight, ↩ opens, → ← expand and collapse the stack.
+    private var keys: some View {
+        ZStack {
+            Button("") { ls.move(1) }.keyboardShortcut(.downArrow, modifiers: [])
+            Button("") { ls.move(-1) }.keyboardShortcut(.upArrow, modifiers: [])
+            Button("") { if let m = ls.selected { nav.open = m; mail.markRead(m) } }.keyboardShortcut(.return, modifiers: [])
+            Button("") { setExpanded(true) }.keyboardShortcut(.rightArrow, modifiers: [])
+            Button("") { setExpanded(false) }.keyboardShortcut(.leftArrow, modifiers: [])
+        }.opacity(0).frame(width: 0, height: 0).allowsHitTesting(false)
+    }
+
+    private func setExpanded(_ on: Bool) {
+        guard ls.layout == .stacks, let m = ls.selected else { return }
+        if on { ls.expanded.insert(m.fromEmail) } else { ls.expanded.remove(m.fromEmail); ls.expandAll = false }
     }
 
     private var empty: some View {
         VStack(spacing: 6) {
             Image(systemName: pane.symbol).font(.system(size: 22)).foregroundStyle(.secondary)
-            Text(pane == .priority ? "Nothing needs you right now." : pane == .favourites ? "No favourites yet. Click the star on any sender." : "Nothing here.").font(.system(size: 13)).foregroundStyle(.secondary)
+            Text(ls.query.filtering ? "Nothing matches these filters." : pane == .priority ? "Nothing needs you right now." : pane == .favourites ? "No favourites yet. Click the star on any sender." : "Nothing here.").font(.system(size: 13)).foregroundStyle(.secondary)
+            if ls.query.filtering { Button("Clear filters") { ls.clearFilters() }.buttonStyle(Pill()) }
         }.frame(maxWidth: .infinity).padding(.top, 50)
     }
 
@@ -79,11 +181,58 @@ struct StackListPane: View {
     }
 }
 
+/// A small toggle chip for the filter bar.
+private struct Chip: View {
+    let title: String
+    let symbol: String
+    let active: Bool
+    let action: () -> Void
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 5) {
+                Image(systemName: symbol).font(.system(size: 6))
+                Text(title).font(.system(size: 12, weight: active ? .semibold : .regular))
+            }
+            .padding(.horizontal, 9).padding(.vertical, 4)
+            .foregroundStyle(active ? Theme.accent : .secondary)
+            .background(active ? Theme.accentSoft : Theme.fill, in: Capsule())
+            .contentShape(Capsule())
+        }.buttonStyle(.plain)
+    }
+}
+
+/// A menu chip that shows the current choice and lights up when it differs from the default.
+private struct FilterMenu<T: Hashable>: View {
+    let symbol: String
+    let options: [T]
+    let label: KeyPath<T, String>
+    @Binding var selection: T
+    let active: Bool
+    var body: some View {
+        Menu {
+            ForEach(options, id: \.self) { o in
+                Button { selection = o } label: {
+                    if o == selection { Label(o[keyPath: label], systemImage: "checkmark") } else { Text(o[keyPath: label]) }
+                }
+            }
+        } label: {
+            HStack(spacing: 5) {
+                Image(systemName: symbol).font(.system(size: 10.5))
+                Text(selection[keyPath: label]).font(.system(size: 12, weight: active ? .semibold : .regular)).lineLimit(1)
+            }
+            .padding(.horizontal, 9).padding(.vertical, 4)
+            .foregroundStyle(active ? Theme.accent : .secondary)
+            .background(active ? Theme.accentSoft : Theme.fill, in: Capsule())
+        }
+        .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+    }
+}
+
 struct StackCard: View {
     let stack: MailStack
+    @Binding var expanded: Bool
     let mail = MailModel.shared
     let nav = Nav.shared
-    @State private var expanded = false
     private var shown: [ScoredMessage] { expanded ? stack.messages : Array(stack.messages.prefix(3)) }
 
     var body: some View {
@@ -91,7 +240,7 @@ struct StackCard: View {
             header
             ForEach(shown) { m in
                 Divider().opacity(0.6)
-                MessageRow(item: m, showFrom: false, showAccount: mail.accounts.count > 1)
+                MessageRow(item: m, showFrom: false, showAccount: mail.accounts.count > 1).id(m.id)
             }
             if stack.messages.count > 3 {
                 Divider().opacity(0.6)
@@ -133,7 +282,8 @@ struct MessageRow: View {
 
     var body: some View {
         let m = item.message
-        Button { Nav.shared.open = m; mail.markRead(m) } label: {
+        let selected = Nav.shared.list.selection == m.id
+        Button { Nav.shared.list.selection = m.id; Nav.shared.open = m; mail.markRead(m) } label: {
             HStack(alignment: .firstTextBaseline, spacing: 10) {
                 Text("\(item.score)").font(.system(size: 11, weight: .semibold, design: .monospaced)).foregroundStyle(Fmt.scoreColor(item.score)).frame(width: 26, alignment: .trailing)
                 if showFrom { Text(m.displayName).font(.system(size: 13, weight: m.unread ? .semibold : .regular)).lineLimit(1).frame(width: 110, alignment: .leading) }
@@ -144,7 +294,7 @@ struct MessageRow: View {
                 Text(Fmt.time(m.date)).font(.system(size: 11.5)).foregroundStyle(.secondary)
             }
             .padding(.horizontal, 14).padding(.vertical, 8)
-            .background(hover ? Theme.fill : .clear)
+            .background(selected ? Theme.accentSoft : hover ? Theme.fill : .clear)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -175,6 +325,11 @@ struct ThreadView: View {
         VStack(spacing: 0) {
             PaneHeader(title: message.subject, subtitle: "\(message.displayName) · \(message.account) · \(Fmt.time(message.date))") {
                 HStack(spacing: 8) {
+                    let ls = Nav.shared.list
+                    Button { ls.step(from: message, -1) } label: { Image(systemName: "chevron.up") }.buttonStyle(Pill()).disabled(!ls.hasStep(from: message, -1))
+                        .keyboardShortcut(.upArrow, modifiers: .option).help("Previous message  ⌥↑").accessibilityLabel("Previous message")
+                    Button { ls.step(from: message, 1) } label: { Image(systemName: "chevron.down") }.buttonStyle(Pill()).disabled(!ls.hasStep(from: message, 1))
+                        .keyboardShortcut(.downArrow, modifiers: .option).help("Next message  ⌥↓").accessibilityLabel("Next message")
                     Button { mail.toggleFavourite(message.fromEmail) } label: { Image(systemName: mail.favourites.contains(message.fromEmail) ? "star.fill" : "star") }.buttonStyle(Pill()).help("Favourite sender")
                     Menu {
                         Button("Mute for a week") { mail.muteSender(message.fromEmail, days: 7) }
