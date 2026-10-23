@@ -23,13 +23,13 @@ enum SnapshotMode {
     struct Shot { let name: String; let dark: Bool; let size: CGSize; let make: @MainActor () -> AnyView }
 
     @MainActor static var shots: [Shot] {
-        func manager(_ name: String, _ p: Pane, dark: Bool = false, setup: Bool = false, open: Bool = false, tab: SettingsPane.Tab = .general, folder: String? = nil) -> Shot {
+        func manager(_ name: String, _ p: Pane, dark: Bool = false, setup: Bool = false, open: Bool = false, id: String = "1", tab: SettingsPane.Tab = .general, folder: String? = nil) -> Shot {
             Shot(name: name + (dark ? "-dark" : ""), dark: dark, size: CGSize(width: 1100, height: 720)) {
                 let d = Demo.data()
                 MailModel.shared.loadDemo(setup ? MooseData() : d, signedIn: !setup, folders: Demo.folders())
                 Nav.shared.folder = folder
                 Nav.shared.pane = p; Nav.shared.settingsTab = tab; Nav.shared.account = nil
-                Nav.shared.open = open ? MailModel.shared.scored.first { $0.message.fromEmail == "maya@acme.com" }?.message : nil
+                Nav.shared.open = open ? MailModel.shared.scored.first { $0.message.id == id }?.message : nil
                 return AnyView(ManagerView())
             }
         }
@@ -57,7 +57,7 @@ enum SnapshotMode {
                     st.index = 2; MailModel.shared.apply(.archive, to: MailModel.shared.messages(ids: ["4", "5"]), sender: "Stripe") },
                 pop(), pop(dark: true),
                 manager("priority", .priority), manager("priority", .priority, dark: true),
-                manager("thread", .priority, open: true), manager("routing", .routing), manager("muting", .muting, dark: true),
+                manager("thread", .priority, open: true), manager("thread-brief", .priority, open: true, id: "12"), manager("thread-reply", .priority, dark: true, open: true), manager("routing", .routing), manager("muting", .muting, dark: true),
                 manager("agents", .agents, dark: true), manager("setup", .priority, dark: true, setup: true), manager("settings", .settings, tab: .accounts),
                 manager("help", .help),
                 manager("folder", .folder, folder: "Receipts"), manager("folder", .folder, dark: true, folder: "Work/Clients"), manager("folders", .folders)]
@@ -179,9 +179,59 @@ struct PopoverShot: View {
             msg("8", "me@gmail.com", "Substack Digest", "digest@substack.example", "Your weekly reads", "Ten stories picked for you this week.", at(6, 0), labels: ["INBOX", "CATEGORY_UPDATES"], bulk: true),
             msg("9", "me@gmail.com", "Shoply", "deals@shoply.example", "48 hours only: 30% off", "Don't miss out on our biggest sale.", at(5, 10), labels: ["INBOX", "CATEGORY_PROMOTIONS"], bulk: true),
             msg("10", "work@acme.com", "GitHub", "noreply@github.com", "[acme/api] Run failed: CI", "The workflow run failed on main.", at(9, 5), labels: ["INBOX", "CATEGORY_UPDATES"], bulk: true),
+            msg("12", "me@gmail.com", "Revenue Services Help", "news@revenue.example", "100 days to go: submit your tax return now", "You now have 100 days left until the deadline to submit your online tax return.", at(13, 33), labels: ["INBOX", "CATEGORY_UPDATES"]),
             msg("11", "me@gmail.com", "Bob", "bob@example.com", "fyi", "Saw this and thought of you.", at(10, 0, daysAgo: 9), unread: false),
         ]
         d.syncedAt = ["me@gmail.com": Date()]
+        d.composeDrafts["1"] = "Hi Maya, the signatory is Alex Rivera, Director. Yes, let's keep the 12-month renewal."
         return d
     }
+
+    /// Full texts for the sample messages, as an email would really arrive: broken lines, blank runs, tracking links and a footer.
+    static let bodies: [String: String] = [
+        "1": """
+        Hi,
+
+        I've addressed Legal's note on §4 and the termination clause is now 30 days. The payment schedule in §7 is unchanged.
+
+        Two small things I still need from you: the signatory name for the cover page, and whether we keep the 12-month renewal term.
+
+        Can you sign off by Friday so we can send it over? Happy to hop on a call if that's easier.
+
+        Thanks,
+        Maya
+        """,
+        "12": """
+        https://mail.revenue.example/seeemailinfull/EmailServlet?campaignkw=notrack&tid=cc-0_1792758791602004551&signature=5C168635A64C09291EFAABDE6DD2A3D9
+
+
+
+        Dear customer,
+
+        You now have 100
+
+
+        days left until the deadline to submit your online tax return for the 2025
+
+
+        to
+
+
+        2026 tax year.
+
+        If you've already submitted your tax return, or you've told us you no longer need to send one, thank you. You don't need to do anything else.
+
+        File now and get it off your to-do list. You don't have to wait until 31 January.
+
+        File your return: https://www.gov.example/self-assessment
+
+        To unsubscribe from these emails, click here: https://mail.revenue.example/unsubscribe?id=8812&signature=ab12cd34ef56
+        Privacy policy
+        """,
+    ]
+
+    static let briefs: [String: MailBrief] = [
+        "1": MailBrief(summary: "Maya wants your sign-off on the contract by Friday and needs two answers from you first.", points: ["Termination clause is now 30 days; payment schedule is unchanged", "Needs the signatory name for the cover page", "Asks whether the 12-month renewal term stays"], asks: "sign off by Friday, name the signatory, confirm the renewal term", replyNeeded: true, urgency: "high", dates: ["by Friday"]),
+        "12": MailBrief(summary: "A reminder that your online tax return for the 2026 tax year is due in 100 days. Nothing is needed if you already filed.", points: ["You can file now, you don't have to wait for the deadline", "If you've already filed, ignore this", "Automated campaign mail, nothing personal"], asks: "file your return, if you haven't already", replyNeeded: false, urgency: "low", dates: ["100 days left", "31 January"]),
+    ]
 }
