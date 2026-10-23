@@ -63,6 +63,9 @@ enum Microphones {
         var tsize = UInt32(MemoryLayout<UInt32>.size)
         var taddr = AudioObjectPropertyAddress(mSelector: kAudioDevicePropertyTransportType, mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
         _ = AudioObjectGetPropertyData(id, &taddr, 0, nil, &tsize, &transport)
+        // Aggregate and virtual devices (including the "CADefaultDeviceAggregate-…" one CoreAudio makes for every engine) aren't
+        // real microphones and can't be routed to; picking one as the clamshell fallback is what broke the phone mic.
+        if transport == kAudioDeviceTransportTypeAggregate || transport == kAudioDeviceTransportTypeVirtual || name.hasPrefix("CADefaultDeviceAggregate") { return nil }
         // Continuity Camera microphones report the 'ccwd'/'ccwl' transports on recent macOS; the name is the fallback.
         let continuity: Set<UInt32> = [0x63637764, 0x6363776C]
         let phone = continuity.contains(transport) || name.localizedCaseInsensitiveContains("iphone")
@@ -81,9 +84,14 @@ enum Microphones {
         var addr = AudioObjectPropertyAddress(mSelector: kAudioHardwarePropertyDeviceForUID, mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
         var dev = AudioDeviceID(0)
         var cf = uid as CFString
-        var size = UInt32(MemoryLayout<AudioDeviceID>.size)
-        let status = withUnsafeMutablePointer(to: &cf) { p in
-            AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &addr, UInt32(MemoryLayout<CFString>.size), p, &size, &dev)
+        // This property takes an AudioValueTranslation (UID in, device out), not a qualifier.
+        let status = withUnsafeMutablePointer(to: &cf) { cfp in
+            withUnsafeMutablePointer(to: &dev) { devp in
+                var t = AudioValueTranslation(mInputData: UnsafeMutableRawPointer(cfp), mInputDataSize: UInt32(MemoryLayout<CFString>.size),
+                                              mOutputData: UnsafeMutableRawPointer(devp), mOutputDataSize: UInt32(MemoryLayout<AudioDeviceID>.size))
+                var size = UInt32(MemoryLayout<AudioValueTranslation>.size)
+                return AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &addr, 0, nil, &size, &t)
+            }
         }
         return status == noErr && dev != 0 ? dev : nil
     }
