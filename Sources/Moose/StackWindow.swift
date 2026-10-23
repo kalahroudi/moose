@@ -116,8 +116,8 @@ final class StackMouse {
 
     func install() {
         guard monitor == nil else { return }
-        monitor = NSEvent.addLocalMonitorForEvents(matching: [.otherMouseDown, .scrollWheel]) { [weak self] e in
-            guard let self, e.window?.contentView is NSHostingView<StackView> else { return e }
+        monitor = NSEvent.addLocalMonitorForEvents(matching: [.otherMouseDown, .scrollWheel, .swipe]) { [weak self] e in
+            guard let self, e.window?.frameAutosaveName == "MooseStack" else { return e }
             return MainActor.assumeIsolated { self.handle(e) ? nil : e }
         }
     }
@@ -127,6 +127,10 @@ final class StackMouse {
     private func handle(_ e: NSEvent) -> Bool {
         let st = StackModel.shared
         guard st.mode == .browse, !st.showAll else { return false }
+        if e.type == .swipe {   // some mouse drivers turn back/forward into a horizontal swipe
+            if e.deltaX == 0 { return false }
+            st.step(e.deltaX > 0 ? -1 : 1); return true
+        }
         if e.type == .otherMouseDown {
             switch e.buttonNumber {
             case 3: st.step(-1); return true
@@ -166,7 +170,6 @@ struct StackView: View {
         .frame(minWidth: 520, minHeight: 460)
         .overlay(alignment: .bottom) { ToastView() }
         .onAppear { model.setStackVisible(true); StackMouse.shared.install() }
-        .onDisappear { StackMouse.shared.remove() }
         .onChange(of: mail.lastSync) { _, _ in if st.live.isEmpty { st.rebuild() } }
     }
 
@@ -246,6 +249,8 @@ struct StackView: View {
                 Button("") { st.step(1) }.keyboardShortcut(.rightArrow, modifiers: [])
                 Button("") { st.step(-1) }.keyboardShortcut(.upArrow, modifiers: [])
                 Button("") { st.step(1) }.keyboardShortcut(.downArrow, modifiers: [])
+                Button("") { st.step(-1) }.keyboardShortcut("[", modifiers: .command)   // drivers that map back/forward to ⌘[ ⌘]
+                Button("") { st.step(1) }.keyboardShortcut("]", modifiers: .command)
                 Button("") { st.step(-1) }.keyboardShortcut("k", modifiers: [])
                 Button("") { st.step(1) }.keyboardShortcut("j", modifiers: [])
                 Button("") { st.read() }.keyboardShortcut(.space, modifiers: [])

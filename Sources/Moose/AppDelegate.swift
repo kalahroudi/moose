@@ -122,7 +122,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
     func windowWillClose(_ notification: Notification) {
         if (notification.object as? NSWindow) === stackWindow {
             model.setStackVisible(false); MailModel.shared.flush()
-            StackModel.shared.release()
+            StackModel.shared.release(); StackMouse.shared.remove()
             stackWindow?.contentView = nil; stackWindow = nil
             return
         }
