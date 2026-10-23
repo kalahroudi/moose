@@ -24,6 +24,7 @@ final class MailModel {
     private(set) var scored: [ScoredMessage] = []
     var syncing = false
     var signingIn = false
+    private var signInServer: LoopbackServer?
     var client: GoogleClient? = GoogleClient.load()
     var outbox: [PendingSend] = []
     var loadedOnce = false
@@ -104,10 +105,11 @@ final class MailModel {
     func addAccount() {
         guard let client, !signingIn else { return }
         signingIn = true
+        let server = LoopbackServer(); signInServer = server
         Task {
-            defer { signingIn = false }
+            defer { signingIn = false; signInServer = nil }
             do {
-                let t = try await GoogleAuth.signIn(client: client) { url in DispatchQueue.main.async { NSWorkspace.shared.open(url) } }
+                let t = try await GoogleAuth.signIn(client: client, open: { url in DispatchQueue.main.async { NSWorkspace.shared.open(url) } }, server: server)
                 guard let refresh = t.refresh else { throw GoogleAuthError.badResponse("no refresh token") }
                 let probe = GmailClient(account: "pending", client: client)
                 try GmailClient.storeRefreshToken(refresh, for: "pending")
@@ -118,12 +120,21 @@ final class MailModel {
                 persistSoon()
                 AppModel.shared.show("Connected \(email)")
                 await sync()
+            } catch GoogleAuthError.cancelled {
+                AppModel.shared.show("Sign-in cancelled")
+            } catch GmailError.http(403, let body) where body.contains("has not been used") || body.contains("SERVICE_DISABLED") {
+                AppLog.error(GmailError.http(403, body), context: "add account")
+                let project = client.clientID.split(separator: "-").first.map(String.init) ?? ""
+                if let url = URL(string: "https://console.developers.google.com/apis/api/gmail.googleapis.com/overview?project=\(project)") { NSWorkspace.shared.open(url) }
+                AppModel.shared.show("Signed in, but the Gmail API isn't enabled in your Google project. Click Enable on the page that just opened, wait a minute, then sign in again.", error: true)
             } catch {
                 AppLog.error(error, context: "add account")
                 AppModel.shared.show(error is GoogleAuthError ? "Google sign-in didn't finish. Try again and approve access in the browser." : UserError.message(for: error, action: "Connect your account"), error: true)
             }
         }
     }
+
+    func cancelSignIn() { signInServer?.cancel() }
 
     func removeAccount(_ email: String) {
         GmailClient.removeAccount(email); clients[email] = nil

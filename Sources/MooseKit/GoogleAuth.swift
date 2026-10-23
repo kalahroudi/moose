@@ -78,9 +78,8 @@ public enum GoogleAuth {
     }
 
     /// Opens the browser, waits for Google to redirect back to a one-shot loopback server, exchanges the code.
-    public static func signIn(client: GoogleClient, open: @escaping @Sendable (URL) -> Void) async throws -> TokenSet {
+    public static func signIn(client: GoogleClient, open: @escaping @Sendable (URL) -> Void, server: LoopbackServer = LoopbackServer()) async throws -> TokenSet {
         let pkce = pkcePair(); let state = UUID().uuidString
-        let server = LoopbackServer()
         let port = try await server.start()
         let redirect = "http://127.0.0.1:\(port)"
         open(authURL(client: client, redirect: redirect, challenge: pkce.challenge, state: state))
@@ -138,16 +137,16 @@ public final class LoopbackServer: @unchecked Sendable {
         }
     }
 
+    /// Google shows some errors (e.g. 403 access_denied) on its own page and never redirects back, so this must time out.
     public func waitForRequest(timeout: TimeInterval) async throws -> [String: String] {
         defer { listener?.cancel() }
-        return try await withThrowingTaskGroup(of: [String: String].self) { group in
-            group.addTask { try await self.nextRequest() }
-            group.addTask { try await Task.sleep(for: .seconds(timeout)); throw GoogleAuthError.timedOut }
-            let first = try await group.next()!
-            group.cancelAll()
-            return first
-        }
+        let timer = Task { try await Task.sleep(for: .seconds(timeout)); deliver(.failure(GoogleAuthError.timedOut)) }
+        defer { timer.cancel() }
+        return try await nextRequest()
     }
+
+    /// Ends a pending `waitForRequest` with `.cancelled`.
+    public func cancel() { deliver(.failure(GoogleAuthError.cancelled)) }
 
     private func nextRequest() async throws -> [String: String] {
         try await withCheckedThrowingContinuation { cont in

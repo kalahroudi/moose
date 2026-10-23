@@ -46,11 +46,13 @@ Never call a destructive tool without asking me first.
 
 Moose is open source, so it can't ship a shared Google sign-in key. You create your own once (about two minutes), and your mail never passes through anyone else's project. The first-run guide does it for you as far as Google allows:
 
-1. **Enable the Gmail API**, **create a "Desktop app" OAuth client** and **Publish the app** (otherwise Google expires sign-ins every 7 days; personal use needs no review). The guide opens each exact page.
+1. **Enable the Gmail API**, **create a "Desktop app" OAuth client** and **Publish the app**. This step is required: an unpublished app rejects sign-in with `Error 403: access_denied` unless your address is a listed test user, and even then Google expires sign-ins every 7 days. Personal use needs no review; Google will show an "unverified app" warning, so choose *Advanced → Continue*. The guide opens each exact page.
 2. Press *Download JSON*. Moose watches `~/Downloads`, imports `client_secret_*.json` into your Keychain and moves the file to the Trash. (Or paste the ID and secret.)
 3. *Sign in with Google* for each address. Tokens live in the Keychain.
 
 Google has no API for creating a Desktop client, so step 1 needs your clicks. Everything else is automatic.
+
+**Seeing `Error 403: access_denied` in the browser?** The app is still in *Testing*. In Google Cloud Console open *APIs & Services → OAuth consent screen* (or *Google Auth Platform → Audience*) and either click *Publish app*, or add the address you're signing in with under *Test users*. Then press *Add account* again. If you close the browser tab, press *Cancel* in Moose (otherwise it gives up after 3 minutes).
 
 Requires macOS 14+. Claude drafting needs [Claude Code](https://claude.com/claude-code) (`brew install --cask claude-code`); the guide offers to install it.
 
