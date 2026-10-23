@@ -304,4 +304,12 @@ final class FolderTests: XCTestCase {
         let back = try JSONDecoder().decode(MooseData.self, from: JSONEncoder().encode(d))
         XCTAssertEqual(back.folderOrder, ["B", "A"]); XCTAssertEqual(back.keepInInbox, ["m1"])
     }
+
+    func testFolderCacheRoundTripsAndOldFilesStillLoad() throws {
+        var d = MooseData()
+        d.folderCache["school"] = [MailMessage(id: "f1", threadId: "f1", account: "me@x.com", fromName: "A", fromEmail: "a@x.com", subject: "Hi", snippet: "", date: Date(timeIntervalSince1970: 100), unread: true, labels: [])]
+        let back = try JSONDecoder().decode(MooseData.self, from: JSONEncoder().encode(d))
+        XCTAssertEqual(back.folderCache["school"]?.map(\.id), ["f1"])
+        XCTAssertTrue(try JSONDecoder().decode(MooseData.self, from: Data("{}".utf8)).folderCache.isEmpty)
+    }
 }

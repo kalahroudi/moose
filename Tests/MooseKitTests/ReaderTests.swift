@@ -26,6 +26,17 @@ final class ReaderTests: XCTestCase {
     Privacy policy
     """
 
+    func testInvisiblePaddingDoesNotCreateGaps() {
+        let c = MailText.clean("Kind regards,\n\u{200B}\n\u{00A0}\n\u{034F} \u{200C}\n\nThe School Office\n\u{2007}\n\nSENT TO: All Parents")
+        XCTAssertEqual(c.paragraphs, ["Kind regards,", "The School Office", "SENT TO: All Parents"])
+    }
+
+    func testSeparatorsAndFillersDoNotCreateGaps() {
+        let c = MailText.clean("Hello,\r\n\r\nWishing everyone a break.\u{2028}\u{2028}\u{3164}\u{2800}\u{2029}Kind regards,\u{0C}\u{85}\r\n\r\nThe Office")
+        XCTAssertFalse(c.paragraphs.contains { $0.isEmpty })
+        XCTAssertEqual(c.paragraphs.joined(separator: "|"), "Hello,|Wishing everyone a break.|Kind regards,|The Office")
+    }
+
     func testCleanRejoinsFragmentsAndFoldsFooter() {
         let c = MailText.clean(raw)
         XCTAssertTrue(c.paragraphs.contains("You now have 100 days left until the deadline to submit your online tax return for the 2025 to 2026 tax year."))
