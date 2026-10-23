@@ -15,6 +15,11 @@ struct PendingSend: Identifiable, Equatable {
     var isReply = true
 }
 
+struct FolderStats: Equatable { var total = 0; var unread = 0 }
+
+/// What happens to the mail in a folder when the folder is deleted.
+enum FolderDeletion { case keepMail, toInbox, trashMail }
+
 /// The mail brain of the app: owns the data file, Gmail clients, the outbox and the control API for agents.
 /// Only the visible UI triggers refreshes; nothing here runs on a timer while the app is hidden.
 @MainActor @Observable
@@ -47,8 +52,14 @@ final class MailModel {
         let messages: [MailMessage]      // exactly as they were
         let text: String
         var folder: String? = nil        // for .file: where the messages went
+        var container: MailContainer = .inbox   // where they were taken from
     }
     private(set) var undoStack: [UndoEntry] = []
+    /// Mail that filing rules moved out of the inbox, by `Folders.key`. Loaded from the Gmail label when a folder is opened; not saved to disk.
+    private(set) var folderMessages: [String: [MailMessage]] = [:]
+    private(set) var folderStats: [String: FolderStats] = [:]
+    private(set) var folderLoading: Set<String> = []
+    private var folderStatsAt = Date.distantPast
     private(set) var undoToast: UndoEntry?
 
     private init() { data = store.load(); rescore() }
@@ -92,8 +103,10 @@ final class MailModel {
     /// Flushes right away: window close, resign active, quit.
     func flush() { if demo { return }; saveTask?.cancel(); do { try store.save(data) } catch { AppLog.error(error, context: "flush mail data") } }
 
-    func loadDemo(_ d: MooseData, signedIn: Bool) {
+    func loadDemo(_ d: MooseData, signedIn: Bool, folders: [String: [MailMessage]] = [:]) {
         demo = true; data = d; rescore(); loadedOnce = true
+        folderMessages = Dictionary(uniqueKeysWithValues: folders.map { (Folders.key($0.key), $0.value.sorted { $0.date > $1.date }) })
+        folderStats = folderMessages.mapValues { FolderStats(total: $0.count, unread: $0.filter(\.unread).count) }
         client = signedIn ? GoogleClient(clientID: "demo.apps.googleusercontent.com", clientSecret: "demo") : nil
     }
 
@@ -168,10 +181,12 @@ final class MailModel {
                     data.repliedTo = Array(Set(data.repliedTo).union(r))
                 }
                 data.syncedAt[acct.email] = Date()
-            } catch { failed += 1; AppLog.error(error, context: "sync \(acct.email)") }
+            } catch { failed += 1; AppLog.error(error, context: "sync") }
         }
         let filed = autoFile(data.messages)
         persistSoon()
+        await refreshFolders()
+        if Nav.shared.pane == .folder, let f = Nav.shared.folder { await loadFolder(f) }
         if filed > 0 { AppModel.shared.show("Filed \(filed) new \(filed == 1 ? "email" : "emails") into your folders") }
         if failed > 0 { AppModel.shared.show("Couldn't refresh \(failed == 1 ? "one account" : "\(failed) accounts"). Check your connection; details are in the log.", error: true) }
     }
@@ -209,7 +224,12 @@ final class MailModel {
     /// Files everything from this sender in a Gmail label named after them.
     func fileSender(_ m: MailMessage) {
         let name = m.fromName.isEmpty ? m.fromEmail : m.fromName
-        AppModel.shared.show(addRule(Rule(senders: [m.fromEmail], action: .file(name), source: "you")))
+        announce(addRule(Rule(senders: [m.fromEmail], action: .file(name), source: "you")), folder: name)
+    }
+
+    /// Says what a new filing rule did, with a button that opens the folder it files into.
+    func announce(_ text: String, folder: String?) {
+        AppModel.shared.show(text, actionTitle: folder == nil ? nil : "Open folder") { if let f = folder { AppDelegate.shared.showManager(); Nav.shared.openFolder(f) } }
     }
 
     /// Adds a rule and says in one sentence what it did. A folder rule also files the matching mail already in the inbox.
@@ -233,23 +253,45 @@ final class MailModel {
         let fileRules = data.rules.filter { $0.isActive() && $0.folder != nil }
         guard !fileRules.isEmpty else { return 0 }
         var byFolder: [String: [MailMessage]] = [:]
-        for m in messages { if let f = fileRules.first(where: { $0.matches(m) })?.folder { byFolder[f, default: []].append(m) } }
-        for (folder, msgs) in byFolder { mutateLocal(.file, msgs, inverse: false); remote(.file, msgs, inverse: false, folder: folder) }
+        let kept = Set(data.keepInInbox)
+        for m in messages where !kept.contains(m.id) { if let f = fileRules.first(where: { $0.matches(m) })?.folder { byFolder[f, default: []].append(m) } }
+        for (folder, msgs) in byFolder { mutateLocal(.file, msgs, inverse: false, folder: folder); remote(.file, msgs, inverse: false, folder: folder) }
         return byFolder.values.reduce(0) { $0 + $1.count }
     }
     func removeRule(_ id: UUID) { data.rules.removeAll { $0.id == id }; persistSoon() }
     func setRule(_ id: UUID, enabled: Bool) { if let i = data.rules.firstIndex(where: { $0.id == id }) { data.rules[i].enabled = enabled; persistSoon() } }
 
     func markRead(_ m: MailMessage) {
-        guard let i = data.messages.firstIndex(where: { $0.id == m.id }), data.messages[i].unread else { return }
-        data.messages[i].unread = false; persistSoon()
+        if let i = data.messages.firstIndex(where: { $0.id == m.id }) {
+            guard data.messages[i].unread else { return }
+            data.messages[i].unread = false; persistSoon()
+        } else if let k = folderKey(containing: m.id), let i = folderMessages[k]?.firstIndex(where: { $0.id == m.id }), folderMessages[k]?[i].unread == true {
+            folderMessages[k]?[i].unread = false
+            if var s = folderStats[k] { s.unread = max(0, s.unread - 1); folderStats[k] = s }
+        } else { return }
+        if demo { return }
         Task { do { try await gmail(m.account)?.markRead(m.id) } catch { AppLog.error(error, context: "mark read") } }
     }
 
+    /// Takes a message out of where it is: out of the inbox, or (for filed mail) out of its folder. It stays in All Mail.
     func archive(_ m: MailMessage) {
-        data.messages.removeAll { $0.id == m.id }; persistSoon()
-        Task { do { try await gmail(m.account)?.archive(m.id) } catch { AppLog.error(error, context: "archive") } }
+        if data.messages.contains(where: { $0.id == m.id }) {
+            data.messages.removeAll { $0.id == m.id }; persistSoon()
+            if demo { return }
+            Task { do { try await gmail(m.account)?.archive(m.id) } catch { AppLog.error(error, context: "archive") } }
+        } else if let k = folderKey(containing: m.id), let name = folderNames.first(where: { Folders.key($0) == k }) {
+            apply(.archive, to: [m], container: .folder(name))
+        }
     }
+
+    /// Folder names and Gmail error bodies can hold personal words, so the log gets the failure kind and nothing else.
+    private func logFolderError(_ error: Error, _ context: String) {
+        if case GmailError.http(let code, _) = error { AppLog.info("\(context) failed: Gmail HTTP \(code)") }
+        else if let e = error as? URLError { AppLog.info("\(context) failed: network error \(e.code.rawValue)") }
+        else { AppLog.info("\(context) failed: \(type(of: error))") }
+    }
+
+    private func folderKey(containing id: String) -> String? { folderMessages.first { $0.value.contains { $0.id == id } }?.key }
 
     func fullText(_ m: MailMessage) async -> String {
         do { return try await gmail(m.account)?.fullText(m.id) ?? m.snippet } catch { AppLog.error(error, context: "read message"); return m.snippet }
@@ -259,14 +301,19 @@ final class MailModel {
 
     /// Applies an action to many messages at once. The local cache changes immediately; Gmail follows.
     @discardableResult
-    func apply(_ action: StackAction, to messages: [MailMessage], sender: String? = nil, folder: String? = nil) -> UndoEntry? {
-        let present = Set(data.messages.map(\.id))
+    func apply(_ action: StackAction, to messages: [MailMessage], sender: String? = nil, folder: String? = nil, container: MailContainer = .inbox) -> UndoEntry? {
+        let present: Set<String>
+        switch container {
+        case .inbox: present = Set(data.messages.map(\.id))
+        case .folder(let f): present = Set((folderMessages[Folders.key(f)] ?? []).map(\.id))
+        }
         let targets = messages.filter { present.contains($0.id) }
         guard !targets.isEmpty else { return nil }
-        let text = folder.map { "\(action.verb()) \(targets.count) in “\($0)”" } ?? action.summary(count: targets.count, sender: sender)
-        let entry = UndoEntry(action: action, messages: targets, text: text, folder: folder)
-        mutateLocal(action, targets, inverse: false)
-        remote(action, targets, inverse: false, folder: folder)
+        var text = folder.map { "\(action.verb()) \(targets.count) in “\($0)”" } ?? action.summary(count: targets.count, sender: sender)
+        if case .folder(let f) = container, action == .archive { text = "Cleared \(targets.count) from “\(f)”" + (sender.map { " (\($0))" } ?? "") }
+        let entry = UndoEntry(action: action, messages: targets, text: text, folder: folder, container: container)
+        mutateLocal(action, targets, inverse: false, container: container, folder: folder)
+        remote(action, targets, inverse: false, folder: folder, container: container)
         undoStack.append(entry); if undoStack.count > 20 { undoStack.removeFirst() }
         undoToast = entry
         Task { try? await Task.sleep(for: .seconds(10)); if undoToast?.id == entry.id { undoToast = nil } }
@@ -275,27 +322,74 @@ final class MailModel {
 
     func undo() {
         guard let entry = undoStack.popLast() else { return }
-        mutateLocal(entry.action, entry.messages, inverse: true)
-        remote(entry.action, entry.messages, inverse: true, folder: entry.folder)
+        mutateLocal(entry.action, entry.messages, inverse: true, container: entry.container, folder: entry.folder)
+        remote(entry.action, entry.messages, inverse: true, folder: entry.folder, container: entry.container)
         undoToast = nil
         AppModel.shared.show("Undone: \(entry.text)")
     }
     var canUndo: Bool { !undoStack.isEmpty }
 
-    private func mutateLocal(_ action: StackAction, _ msgs: [MailMessage], inverse: Bool) {
+    private func mutateLocal(_ action: StackAction, _ msgs: [MailMessage], inverse: Bool, container: MailContainer = .inbox, folder: String? = nil) {
         let ids = Set(msgs.map(\.id))
-        switch (action, inverse) {
-        case (.archive, false), (.trash, false), (.file, false): data.messages.removeAll { ids.contains($0.id) }
-        case (.archive, true), (.trash, true), (.file, true): data.messages += msgs.filter { m in !data.messages.contains { $0.id == m.id } }
-        case (.markRead, false): for i in data.messages.indices where ids.contains(data.messages[i].id) { data.messages[i].unread = false }
-        case (.markRead, true):
-            let wasUnread = Set(msgs.filter(\.unread).map(\.id))
-            for i in data.messages.indices where wasUnread.contains(data.messages[i].id) { data.messages[i].unread = true }
+        let wasUnread = Set(msgs.filter(\.unread).map(\.id))
+        func restoreToInbox() { data.messages += msgs.filter { m in !data.messages.contains { $0.id == m.id } } }
+        switch container {
+        case .inbox:
+            switch (action, inverse) {
+            case (.archive, false), (.trash, false): data.messages.removeAll { ids.contains($0.id) }
+            case (.file, false): data.messages.removeAll { ids.contains($0.id) }; if let f = folder { folderAdd(f, msgs) }
+            case (.archive, true), (.trash, true): restoreToInbox()
+            case (.file, true): restoreToInbox(); if let f = folder { folderRemove(f, msgs) }
+            case (.markRead, false): for i in data.messages.indices where ids.contains(data.messages[i].id) { data.messages[i].unread = false }
+            case (.markRead, true): for i in data.messages.indices where wasUnread.contains(data.messages[i].id) { data.messages[i].unread = true }
+            case (.unfile, _): break
+            }
+        case .folder(let f):
+            let k = Folders.key(f)
+            switch (action, inverse) {
+            case (.archive, false), (.trash, false): folderRemove(f, msgs)
+            case (.archive, true), (.trash, true): folderAdd(f, msgs)
+            case (.unfile, false):
+                folderRemove(f, msgs); restoreToInbox()
+                data.keepInInbox += ids.filter { !data.keepInInbox.contains($0) }
+                if data.keepInInbox.count > 1000 { data.keepInInbox.removeFirst(data.keepInInbox.count - 1000) }
+            case (.unfile, true):
+                data.messages.removeAll { ids.contains($0.id) }; folderAdd(f, msgs)
+                data.keepInInbox.removeAll { ids.contains($0) }
+            case (.markRead, false):
+                if let list = folderMessages[k] { folderMessages[k] = list.map { var m = $0; if ids.contains(m.id) { m.unread = false }; return m } }
+                adjustStats(k, unread: -wasUnread.count)
+            case (.markRead, true):
+                if let list = folderMessages[k] { folderMessages[k] = list.map { var m = $0; if wasUnread.contains(m.id) { m.unread = true }; return m } }
+                adjustStats(k, unread: wasUnread.count)
+            case (.file, _): break
+            }
         }
         persistSoon()
     }
 
-    private func remote(_ action: StackAction, _ msgs: [MailMessage], inverse: Bool, folder: String? = nil) {
+    private func adjustStats(_ k: String, total: Int = 0, unread: Int = 0) {
+        guard var s = folderStats[k] else { return }
+        s.total = max(0, s.total + total); s.unread = max(0, s.unread + unread); folderStats[k] = s
+    }
+
+    private func folderAdd(_ f: String, _ msgs: [MailMessage]) {
+        let k = Folders.key(f)
+        if var list = folderMessages[k] {
+            let have = Set(list.map(\.id))
+            list += msgs.filter { !have.contains($0.id) }
+            folderMessages[k] = list.sorted { $0.date > $1.date }
+        }
+        adjustStats(k, total: msgs.count, unread: msgs.filter(\.unread).count)
+    }
+
+    private func folderRemove(_ f: String, _ msgs: [MailMessage]) {
+        let k = Folders.key(f), ids = Set(msgs.map(\.id))
+        folderMessages[k]?.removeAll { ids.contains($0.id) }
+        adjustStats(k, total: -msgs.count, unread: -msgs.filter(\.unread).count)
+    }
+
+    private func remote(_ action: StackAction, _ msgs: [MailMessage], inverse: Bool, folder: String? = nil, container: MailContainer = .inbox) {
         if demo { return }
         pendingOps += 1
         Task {
@@ -305,16 +399,23 @@ final class MailModel {
                 guard let g = gmail(account) else { continue }
                 let ids = group.map(\.id)
                 do {
-                    switch (action, inverse) {
-                    case (.archive, false): try await g.batchModify(ids, remove: ["INBOX"])
-                    case (.archive, true): try await g.batchModify(ids, add: ["INBOX"])
-                    case (.markRead, false): try await g.batchModify(ids, remove: ["UNREAD"])
-                    case (.markRead, true): try await g.batchModify(group.filter(\.unread).map(\.id), add: ["UNREAD"])
-                    case (.trash, _): try await g.trash(ids, undo: inverse)
-                    case (.file, _):
+                    switch (container, action, inverse) {
+                    case (_, .markRead, false): try await g.batchModify(ids, remove: ["UNREAD"])
+                    case (_, .markRead, true): try await g.batchModify(group.filter(\.unread).map(\.id), add: ["UNREAD"])
+                    case (_, .trash, _): try await g.trash(ids, undo: inverse)
+                    case (.inbox, .archive, false): try await g.batchModify(ids, remove: ["INBOX"])
+                    case (.inbox, .archive, true): try await g.batchModify(ids, add: ["INBOX"])
+                    case (.inbox, .file, _):
                         guard let folder else { break }
                         let label = try await g.labelID(named: folder)
                         if inverse { try await g.batchModify(ids, add: ["INBOX"], remove: [label]) } else { try await g.batchModify(ids, add: [label], remove: ["INBOX"]) }
+                    case (.folder(let f), .archive, _):
+                        let label = try await g.labelID(named: f)
+                        if inverse { try await g.batchModify(ids, add: [label]) } else { try await g.batchModify(ids, remove: [label]) }
+                    case (.folder(let f), .unfile, _):
+                        let label = try await g.labelID(named: f)
+                        if inverse { try await g.batchModify(ids, add: [label], remove: ["INBOX"]) } else { try await g.batchModify(ids, add: ["INBOX"], remove: [label]) }
+                    default: break
                     }
                 } catch { failed = true; AppLog.error(error, context: "bulk \(action.rawValue)") }
             }
@@ -322,7 +423,165 @@ final class MailModel {
         }
     }
 
-    func messages(ids: [String]) -> [MailMessage] { let set = Set(ids); return data.messages.filter { set.contains($0.id) } }
+    func messages(ids: [String], in container: MailContainer = .inbox) -> [MailMessage] {
+        let set = Set(ids)
+        switch container {
+        case .inbox: return data.messages.filter { set.contains($0.id) }
+        case .folder(let f): return (folderMessages[Folders.key(f)] ?? []).filter { set.contains($0.id) }
+        }
+    }
+
+    // MARK: Folders (Gmail labels that filing rules move mail into)
+
+    var folderNames: [String] { Folders.names(rules: data.rules, order: data.folderOrder) }
+    func folderStacks(_ name: String) -> [MailStack] { Folders.stacks(folderMessages[Folders.key(name)] ?? [], favourites: favourites) }
+    func folderLoaded(_ name: String) -> Bool { folderMessages[Folders.key(name)] != nil }
+    func folderUnread(_ name: String) -> Int {
+        let k = Folders.key(name)
+        return folderStats[k]?.unread ?? folderMessages[k]?.filter(\.unread).count ?? 0
+    }
+    func folderTotal(_ name: String) -> Int {
+        let k = Folders.key(name)
+        return folderStats[k]?.total ?? folderMessages[k]?.count ?? 0
+    }
+    func folderRules(_ name: String) -> [Rule] { data.rules.filter { $0.folder.map { Folders.key($0) == Folders.key(name) } ?? false } }
+    func folderPaused(_ name: String) -> Bool { let r = folderRules(name); return !r.isEmpty && r.allSatisfy { !$0.enabled } }
+
+    func setFolderFiling(_ name: String, enabled: Bool) {
+        let k = Folders.key(name)
+        for i in data.rules.indices where data.rules[i].folder.map({ Folders.key($0) == k }) ?? false { data.rules[i].enabled = enabled }
+        persistSoon()
+        AppModel.shared.show(enabled ? "Filing into “\(name)” resumed" : "Filing into “\(name)” paused. Mail already there stays.")
+    }
+
+    /// Puts `name` before `target` (or last when nil). The order is saved with the rest of the data.
+    func moveFolder(_ name: String, before target: String?) {
+        data.folderOrder = Folders.moved(name, before: target, in: folderNames); persistSoon()
+    }
+    func shiftFolder(_ name: String, by offset: Int) {
+        data.folderOrder = Folders.shifted(name, by: offset, in: folderNames); persistSoon()
+    }
+
+    /// Counts for the sidebar: one cheap Gmail call per folder and account, at most every five minutes unless forced.
+    func refreshFolders(force: Bool = false) async {
+        let names = folderNames
+        guard !demo, hasAccount, !names.isEmpty, force || Date().timeIntervalSince(folderStatsAt) > 300 else { return }
+        folderStatsAt = Date()
+        for _ in 0..<20 where pendingOps > 0 { try? await Task.sleep(for: .milliseconds(500)) }   // let filing finish so the counts include it
+        var next: [String: FolderStats] = [:]
+        for name in names {
+            let k = Folders.key(name)
+            var s = FolderStats(), ok = true
+            for acct in data.accounts {
+                guard let g = gmail(acct.email) else { continue }
+                do { if let id = try await g.existingLabelID(named: name) { let c = try await g.labelStats(id); s.total += c.total; s.unread += c.unread } }
+                catch { ok = false; logFolderError(error, "folder stats") }
+            }
+            next[k] = ok ? s : (folderStats[k] ?? s)
+        }
+        folderStats = next
+    }
+
+    /// Reads the newest `limit` messages per account under the folder's label. What is already here is kept, not fetched again.
+    func loadFolder(_ name: String, limit: Int = 100) async {
+        let k = Folders.key(name)
+        guard !demo, hasAccount, !folderLoading.contains(k) else { return }
+        folderLoading.insert(k); defer { folderLoading.remove(k) }
+        let old = folderMessages[k] ?? []
+        var all: [MailMessage] = []
+        var stats = FolderStats(), statsOK = true
+        for acct in data.accounts {
+            let mine = old.filter { $0.account == acct.email }
+            guard let g = gmail(acct.email) else { all += mine; continue }
+            do {
+                guard let id = try await g.existingLabelID(named: name) else { continue }
+                let r = try await g.labelMessages(labelID: id, limit: limit, skip: Set(mine.map(\.id)))
+                let still = Set(r.ids)
+                all += mine.filter { still.contains($0.id) } + r.fresh
+                let c = try await g.labelStats(id); stats.total += c.total; stats.unread += c.unread
+            } catch { all += mine; statsOK = false; logFolderError(error, "load folder") }
+        }
+        folderMessages[k] = all.sorted { $0.date > $1.date }
+        if statsOK { folderStats[k] = stats }
+    }
+
+    /// An action on everything in a folder (the newest 300 per account). Undoable like any other bulk action.
+    @discardableResult
+    func folderBulk(_ action: StackAction, in name: String) async -> Int {
+        let k = Folders.key(name)
+        for _ in 0..<50 where folderLoading.contains(k) { try? await Task.sleep(for: .milliseconds(200)) }
+        await loadFolder(name, limit: 300)
+        let all = folderMessages[k] ?? []
+        let targets = action == .markRead ? all.filter(\.unread) : all
+        guard !targets.isEmpty else { AppModel.shared.show(action == .markRead ? "Nothing unread in “\(name)”" : "“\(name)” is empty"); return 0 }
+        apply(action, to: targets, container: .folder(name))
+        return targets.count
+    }
+
+    @discardableResult
+    func renameFolder(_ old: String, to raw: String) async -> Bool {
+        let name = raw.trimmingCharacters(in: .whitespacesAndNewlines), ok = Folders.key(old), nk = Folders.key(name)
+        guard !name.isEmpty, name.count <= 100 else { AppModel.shared.show("Give the folder a name of up to 100 characters.", error: true); return false }
+        if name == old { return true }
+        if nk != ok, folderNames.contains(where: { Folders.key($0) == nk }) { AppModel.shared.show("There is already a folder called “\(name)”.", error: true); return false }
+        if !demo {
+            do {
+                for acct in data.accounts {
+                    guard let g = gmail(acct.email), let id = try await g.existingLabelID(named: old) else { continue }
+                    try await g.renameLabel(id, from: old, to: name)
+                }
+            } catch {
+                logFolderError(error, "rename folder")
+                AppModel.shared.show("Couldn't rename the folder in Gmail. Is there already a label with that name?", error: true); return false
+            }
+        }
+        for i in data.rules.indices where data.rules[i].folder.map({ Folders.key($0) == ok }) ?? false { data.rules[i].action = .file(name) }
+        data.folderOrder = Folders.names(rules: data.rules, order: data.folderOrder.map { Folders.key($0) == ok ? name : $0 })
+        if nk != ok {
+            folderMessages[nk] = folderMessages.removeValue(forKey: ok)
+            folderStats[nk] = folderStats.removeValue(forKey: ok)
+        }
+        if Nav.shared.folder.map({ Folders.key($0) == ok }) ?? false { Nav.shared.folder = name }
+        StackModel.shared.folderRenamed(from: old, to: name)
+        persistSoon()
+        AppModel.shared.show("Renamed to “\(name)”")
+        return true
+    }
+
+    /// Deletes the folder's Gmail label and the rules that fill it. What happens to the mail is the caller's choice. This cannot be undone.
+    func deleteFolder(_ name: String, mode: FolderDeletion) async {
+        let k = Folders.key(name)
+        if !demo {
+            do {
+                for acct in data.accounts {
+                    guard let g = gmail(acct.email), let id = try await g.existingLabelID(named: name) else { continue }
+                    switch mode {
+                    case .keepMail: break
+                    case .toInbox: let ids = try await g.labelIDs(id); try await g.batchModify(ids, add: ["INBOX"], remove: [id])
+                    case .trashMail: try await g.trash(try await g.labelIDs(id))
+                    }
+                    try await g.deleteLabel(id, named: name)
+                }
+            } catch {
+                logFolderError(error, "delete folder")
+                AppModel.shared.show("Couldn't finish deleting “\(name)”. Nothing else was changed; try again.", error: true); return
+            }
+        }
+        data.rules.removeAll { $0.folder.map { Folders.key($0) == k } ?? false }
+        data.folderOrder.removeAll { Folders.key($0) == k }
+        folderMessages[k] = nil; folderStats[k] = nil
+        if Nav.shared.pane == .folder, Nav.shared.folder.map({ Folders.key($0) == k }) ?? false { Nav.shared.pane = .priority; Nav.shared.open = nil }
+        StackModel.shared.folderDeleted(name)
+        persistSoon()
+        let said: String
+        switch mode {
+        case .keepMail: said = "Deleted “\(name)”. The emails are still in All Mail."
+        case .toInbox: said = "Deleted “\(name)” and returned its emails to the inbox."
+        case .trashMail: said = "Deleted “\(name)” and moved its emails to Trash."
+        }
+        AppModel.shared.show(said)
+        if mode == .toInbox { await sync() }
+    }
 
     // MARK: Claude drafting and sending
 
@@ -405,7 +664,32 @@ final class MailModel {
         return data.accounts.first { $0.email.lowercased() == e }?.email
     }
 
-    private func message(_ id: String) -> MailMessage? { data.messages.first { $0.id == id } }
+
+    /// A message from the inbox, or from any folder that has been loaded.
+    private func message(_ id: String) -> MailMessage? {
+        data.messages.first { $0.id == id } ?? folderMessages.values.lazy.compactMap { $0.first { $0.id == id } }.first
+    }
+
+    /// Splits message ids by where they live, so one bulk action can cover the inbox and folders alike.
+    private func located(_ ids: [String]) -> [(container: MailContainer, messages: [MailMessage])] {
+        var out: [(MailContainer, [MailMessage])] = []
+        let inbox = messages(ids: ids)
+        if !inbox.isEmpty { out.append((.inbox, inbox)) }
+        for name in folderNames {
+            let msgs = messages(ids: ids, in: .folder(name))
+            if !msgs.isEmpty { out.append((.folder(name), msgs)) }
+        }
+        return out
+    }
+
+    private struct FolderOut: Encodable { let name: String; let position: Int; let inSidebar: Bool; let emails: Int; let unread: Int; let filingPaused: Bool; let rules: [String] }
+    private struct FolderMsgOut: Encodable { let id, subject, snippet, account, date: String; let unread: Bool }
+    private struct FolderStackOut: Encodable { let sender, name: String; let unread: Int; let messages: [FolderMsgOut] }
+
+    private func jsonText<T: Encodable>(_ v: T) -> String {
+        let e = JSONEncoder(); e.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
+        return String(decoding: (try? e.encode(v)) ?? Data(), as: UTF8.self)
+    }
 
     func handle(_ tool: String, _ a: [String: Any]) async -> (ok: Bool, text: String) {
         func fail(_ s: String) -> (Bool, String) { (false, s) }
@@ -419,10 +703,81 @@ final class MailModel {
             return ok("From: \(m.displayName) <\(m.fromEmail)>\nAccount: \(m.account)\nSubject: \(m.subject)\nDate: \(m.date.formatted())\n\n\(MailText.excerpt(body, 6000).isEmpty ? m.snippet : String(body.prefix(6000)))")
         case "archive_many", "trash_many":
             guard let ids = a["message_ids"] as? [String], !ids.isEmpty else { return fail("Missing message_ids.") }
-            let msgs = messages(ids: Array(ids.prefix(500)))
-            guard !msgs.isEmpty else { return fail("None of those message ids are in the inbox.") }
+            let groups = located(Array(ids.prefix(500)))
+            guard !groups.isEmpty else { return fail("None of those message ids are in the inbox or in a loaded folder.") }
             let act: StackAction = tool == "trash_many" ? .trash : .archive
-            apply(act, to: msgs); return ok("\(act.summary(count: msgs.count, sender: nil)). The user can press Undo in Moose; \(act == .trash ? "Trash keeps mail for 30 days." : "mail stays in All Mail.")")
+            let count = groups.reduce(0) { $0 + $1.messages.count }
+            for g in groups { apply(act, to: g.messages, container: g.container) }
+            return ok("\(act.summary(count: count, sender: nil)). The user can press Undo in Moose; \(act == .trash ? "Trash keeps mail for 30 days." : "mail stays in All Mail (mail in a folder leaves that folder).")")
+        case "unfile_many":
+            guard let ids = a["message_ids"] as? [String], !ids.isEmpty else { return fail("Missing message_ids.") }
+            let groups = located(Array(ids.prefix(500))).filter { if case .folder = $0.container { true } else { false } }
+            guard !groups.isEmpty else { return fail("None of those message ids are in a loaded folder. Use list_folder first.") }
+            let count = groups.reduce(0) { $0 + $1.messages.count }
+            for g in groups { apply(.unfile, to: g.messages, container: g.container) }
+            return ok("Moved \(count) to the inbox. Filing rules will leave them there. The user can press Undo in Moose.")
+        case "list_folders":
+            await refreshFolders(force: true)
+            let names = folderNames
+            return ok(jsonText(names.enumerated().map { i, n in
+                FolderOut(name: n, position: i + 1, inSidebar: i < Folders.visibleCount, emails: folderTotal(n), unread: folderUnread(n), filingPaused: folderPaused(n), rules: folderRules(n).map(\.title))
+            }))
+        case "list_folder":
+            guard let n = str("name"), let name = folderNames.first(where: { Folders.key($0) == Folders.key(n) }) else { return fail("Unknown folder. Use list_folders to see the names.") }
+            await loadFolder(name, limit: min(max((a["limit"] as? Int) ?? 50, 1), 100))
+            let unreadOnly = (a["unread_only"] as? Bool) ?? false
+            let stacks = folderStacks(name).prefix(min(max((a["max_stacks"] as? Int) ?? 20, 1), 50)).map { s -> FolderStackOut in
+                let msgs = s.messages.map(\.message).filter { !unreadOnly || $0.unread }
+                return FolderStackOut(sender: s.key, name: s.name, unread: s.unreadCount, messages: msgs.prefix(10).map {
+                    FolderMsgOut(id: $0.id, subject: $0.subject, snippet: MailText.excerpt($0.snippet, 200), account: $0.account, date: ISO8601DateFormatter().string(from: $0.date), unread: $0.unread) })
+            }.filter { !$0.messages.isEmpty }
+            return ok(jsonText(Array(stacks)))
+        case "folder_action":
+            guard let n = str("name"), let name = folderNames.first(where: { Folders.key($0) == Folders.key(n) }) else { return fail("Unknown folder. Use list_folders to see the names.") }
+            let act: StackAction
+            switch str("action") {
+            case "mark_read": act = .markRead
+            case "move_to_inbox": act = .unfile
+            case "clear": act = .archive
+            case "empty": act = .trash
+            default: return fail("action must be mark_read, move_to_inbox, clear or empty.")
+            }
+            let n2 = await folderBulk(act, in: name)
+            guard n2 > 0 else { return ok("Nothing to do in “\(name)”.") }
+            let what = ["mark_read": "Marked \(n2) read", "move_to_inbox": "Moved \(n2) to the inbox", "clear": "Removed \(n2) from the folder (still in All Mail)", "empty": "Moved \(n2) to Gmail Trash (30 days)"][str("action") ?? ""] ?? "Done"
+            return ok("\(what) in “\(name)”. Acts on the newest 300 per account; call again if the folder has more. The user can press Undo in Moose.")
+        case "rename_folder":
+            guard let n = str("name"), let name = folderNames.first(where: { Folders.key($0) == Folders.key(n) }), let new = str("new_name") else { return fail("Needs name (an existing folder) and new_name.") }
+            return await renameFolder(name, to: new) ? ok("Renamed “\(name)” to “\(new)”. The filing rule now files into the new name.") : fail("Couldn't rename it. The new name may already exist in Gmail.")
+        case "move_folder":
+            guard let n = str("name"), let name = folderNames.first(where: { Folders.key($0) == Folders.key(n) }) else { return fail("Unknown folder. Use list_folders to see the names.") }
+            if let b = str("before") {
+                guard let target = folderNames.first(where: { Folders.key($0) == Folders.key(b) }) else { return fail("Unknown folder in `before`.") }
+                moveFolder(name, before: target)
+            } else if let p = a["position"] as? Int {
+                let rest = folderNames.filter { Folders.key($0) != Folders.key(name) }
+                moveFolder(name, before: p - 1 < rest.count ? rest[max(0, p - 1)] : nil)
+            } else { return fail("Give `before` (a folder name) or `position` (1 = first).") }
+            return ok("Folder order: " + folderNames.joined(separator: ", ") + ". The first \(Folders.visibleCount) show in the sidebar; the rest are wrapped under “more”.")
+        case "set_folder_filing":
+            guard let n = str("name"), let name = folderNames.first(where: { Folders.key($0) == Folders.key(n) }), let on = a["on"] as? Bool else { return fail("Needs name and on (true to resume filing, false to pause).") }
+            setFolderFiling(name, enabled: on)
+            return ok(on ? "Filing into “\(name)” resumed." : "Filing into “\(name)” paused. Mail already there stays.")
+        case "delete_folder":
+            guard let n = str("name"), let name = folderNames.first(where: { Folders.key($0) == Folders.key(n) }) else { return fail("Unknown folder. Use list_folders to see the names.") }
+            let mode: FolderDeletion
+            switch str("mode") {
+            case "keep_mail": mode = .keepMail
+            case "to_inbox": mode = .toInbox
+            case "trash_mail": mode = .trashMail
+            default: return fail("mode must be keep_mail, to_inbox or trash_mail.")
+            }
+            let effect = ["keep_mail": "The emails stay in All Mail.", "to_inbox": "The emails return to the inbox.", "trash_mail": "The emails move to Gmail Trash."][str("mode") ?? ""] ?? ""
+            guard await Approval.ask(title: "An agent wants to delete the folder “\(name)”", detail: "\(folderTotal(name)) emails are labelled “\(name)”. The Gmail label and the filing rule are removed and this cannot be undone. \(effect)", confirm: "Delete folder", decline: "Don't delete") else {
+                return fail("The user declined, or didn't answer in time. Nothing was deleted.")
+            }
+            await deleteFolder(name, mode: mode)
+            return ok("Deleted “\(name)”. \(effect)")
         case "undo": guard canUndo else { return fail("Nothing to undo.") }; undo(); return ok("Undone.")
         case "mark_read": guard let id = str("message_id"), let m = message(id) else { return fail("Unknown message_id.") }; markRead(m); return ok("Marked read.")
         case "archive": guard let id = str("message_id"), let m = message(id) else { return fail("Unknown message_id.") }; archive(m); return ok("Archived.")
@@ -458,7 +813,7 @@ final class MailModel {
                 do { _ = try await queueReply(to: m, body: body, cc: cc, undoSeconds: 5, byAgent: true); return ok("Approved by the user. Sending in 5 seconds.") }
                 catch { AppLog.error(error, context: "agent send"); return fail("Couldn't send.") }
             case .sendAfterUndo:
-                do { _ = try await queueReply(to: m, body: body, cc: cc, undoSeconds: data.undoSeconds, byAgent: true); AppLog.info("agent send queued to \(m.fromEmail)"); return ok("Queued. Sends in \(data.undoSeconds) s unless the user cancels.") }
+                do { _ = try await queueReply(to: m, body: body, cc: cc, undoSeconds: data.undoSeconds, byAgent: true); AppLog.info("agent send queued"); return ok("Queued. Sends in \(data.undoSeconds) s unless the user cancels.") }
                 catch { AppLog.error(error, context: "agent send"); return fail("Couldn't send.") }
             }
         case "draft_email":
@@ -497,11 +852,11 @@ final class MailModel {
 
 /// A native approval dialog that denies when nobody answers.
 @MainActor enum Approval {
-    static func ask(title: String, detail: String, timeout: TimeInterval = 120) async -> Bool {
+    static func ask(title: String, detail: String, confirm: String = "Send", decline: String = "Don't send", timeout: TimeInterval = 120) async -> Bool {
         NSApp.activate(ignoringOtherApps: true)
         let alert = NSAlert()
         alert.messageText = title; alert.informativeText = detail
-        alert.addButton(withTitle: "Send"); alert.addButton(withTitle: "Don't send")
+        alert.addButton(withTitle: confirm); alert.addButton(withTitle: decline)
         alert.buttons[1].keyEquivalent = "\r"; alert.buttons[0].keyEquivalent = ""   // Return = the safe choice
         let timer = Task { try? await Task.sleep(for: .seconds(timeout)); if !Task.isCancelled { NSApp.abortModal() } }
         let r = alert.runModal()

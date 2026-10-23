@@ -61,8 +61,19 @@ struct StackListPane: View {
 
     private var query: StackQuery { var q = ls.query; q.account = nav.account; return q }
 
+    private var folderName: String? { pane == .folder ? nav.folder : nil }
+    private var title: String { folderName ?? pane.title }
+
     private var stacks: [MailStack] {
-        Stacker.refine(mail.stacks(pane.mailView!, unreadOnly: ls.isUnreadOnly(pane)), query)
+        if let f = folderName {
+            let all = mail.folderStacks(f)
+            return Stacker.refine(ls.isUnreadOnly(pane) ? all.compactMap { s in
+                let u = s.messages.filter(\.message.unread)
+                return u.isEmpty ? nil : MailStack(key: s.key, name: s.name, messages: u, favourite: s.favourite)
+            } : all, query)
+        }
+        guard let view = pane.mailView else { return [] }
+        return Stacker.refine(mail.stacks(view, unreadOnly: ls.isUnreadOnly(pane)), query)
     }
     private var flat: [ScoredMessage] { Stacker.flatten(stacks, sort: ls.query.sort) }
 
@@ -75,6 +86,10 @@ struct StackListPane: View {
 
     private func subtitle(_ stacks: [MailStack]) -> String {
         let n = stacks.count, c = stacks.reduce(0) { $0 + $1.messages.count }
+        if let f = folderName {
+            let u = mail.folderUnread(f), t = max(mail.folderTotal(f), c)
+            return ["\(t) \(t == 1 ? "email" : "emails")", u > 0 ? "\(u) unread" : nil, nav.account].compactMap { $0 }.joined(separator: " · ")
+        }
         let parts = ["\(n) \(n == 1 ? "stack" : "stacks")", "\(c) \(c == 1 ? "message" : "messages")", nav.account ?? "\(mail.accounts.count) \(mail.accounts.count == 1 ? "account" : "accounts")"]
         return parts.joined(separator: " · ")
     }
@@ -83,14 +98,19 @@ struct StackListPane: View {
         let stacks = self.stacks
         let visible = rows(stacks)
         VStack(spacing: 0) {
-            PaneHeader(title: pane.title, subtitle: subtitle(stacks)) {
+            PaneHeader(title: title, subtitle: subtitle(stacks)) {
                 HStack(spacing: 8) {
                     SearchBox(prompt: "Search", text: Bindable(ls).query.text).frame(minWidth: 90, idealWidth: 170, maxWidth: 170)
-                    Button("Stack") { AppDelegate.shared.showStack() }.buttonStyle(Pill()).help("Go through priority mail one card at a time  ⌘T")
+                    Button("Stack") { AppDelegate.shared.openStack(source: folderName.map { .folder($0) } ?? .priority) }.buttonStyle(Pill())
+                        .help(folderName == nil ? "Go through priority mail one card at a time  ⌘T" : "Go through this folder one card at a time  ⌘T")
+                    if let f = folderName {
+                        Menu { FolderMenu(name: f) } label: { Image(systemName: "ellipsis") }.buttonStyle(Pill()).menuIndicator(.hidden).fixedSize().help("Folder actions").accessibilityLabel("Folder actions")
+                    }
                     Button { Task { await mail.sync() } } label: { Image(systemName: "arrow.clockwise").rotationEffect(.degrees(mail.syncing ? 180 : 0)) }
                         .buttonStyle(Pill()).disabled(mail.syncing).help("Check for new mail").accessibilityLabel("Check for new mail")
                 }
             }
+            if let f = folderName { FolderRuleBar(name: f) }
             filterBar
             ScrollViewReader { proxy in
                 ScrollView {
@@ -111,6 +131,7 @@ struct StackListPane: View {
             }
             keys
         }
+        .task(id: folderName ?? "") { if let f = folderName { await mail.loadFolder(f) } }
         .onChange(of: visible.map(\.id), initial: true) { _, _ in
             ls.order = visible.map(\.message)
             if let s = ls.selection, !visible.contains(where: { $0.id == s }) { ls.selection = nil }
@@ -199,9 +220,17 @@ struct StackListPane: View {
     private var empty: some View {
         VStack(spacing: 6) {
             Image(systemName: pane.symbol).font(.system(size: 22)).foregroundStyle(.secondary)
-            Text(ls.query.filtering ? "Nothing matches these filters." : pane == .priority ? "Nothing needs you right now." : pane == .favourites ? "No favourites yet. Click the star on any sender." : "Nothing here.").font(.system(size: 13)).foregroundStyle(.secondary)
+            Text(ls.query.filtering ? "Nothing matches these filters." : folderName != nil ? folderEmptyText : pane == .priority ? "Nothing needs you right now." : pane == .favourites ? "No favourites yet. Click the star on any sender." : "Nothing here.").font(.system(size: 13)).foregroundStyle(.secondary)
             if ls.query.filtering { Button("Clear filters") { ls.clearFilters() }.buttonStyle(Pill()) }
         }.frame(maxWidth: .infinity).padding(.top, 50)
+    }
+
+    private var folderEmptyText: String {
+        guard let f = folderName else { return "" }
+        if !mail.folderLoaded(f) { return "Loading “\(f)”…" }
+        if ls.isUnreadOnly(pane) { return "Nothing unread in “\(f)”." }
+        let rule = mail.folderRules(f).first
+        return rule.map { "Nothing filed here yet. New mail \($0.title) will land here automatically." } ?? "Nothing filed here yet."
     }
 
     private var mutedLine: some View {
@@ -368,7 +397,7 @@ struct StackCard: View {
             Text(stack.name).font(.system(size: 13, weight: .semibold)).lineLimit(1)
             Text("\(stack.messages.count) \(stack.messages.count == 1 ? "message" : "messages")").font(.system(size: 11.5)).foregroundStyle(.secondary)
             Spacer(minLength: 8)
-            Text(stack.why).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
+            Text(nav.pane == .folder ? "latest \(Fmt.time(stack.latest))" : stack.why).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
             if stack.messages.count > 3 {
                 Image(systemName: "chevron.right").font(.system(size: 10, weight: .semibold)).foregroundStyle(.secondary)
                     .rotationEffect(.degrees(expanded ? 90 : 0))
@@ -386,13 +415,14 @@ struct MessageRow: View {
     var showAccount = false
     let mail = MailModel.shared
     @State private var hover = false
+    private var container: MailContainer { Nav.shared.pane == .folder ? Nav.shared.folder.map { .folder($0) } ?? .inbox : .inbox }
 
     var body: some View {
         let m = item.message
         let selected = Nav.shared.list.selection == m.id
         Button { Nav.shared.list.selection = m.id; Nav.shared.open = m; mail.markRead(m) } label: {
             HStack(alignment: .firstTextBaseline, spacing: 10) {
-                Text("\(item.score)").font(.system(size: 11, weight: .semibold, design: .monospaced)).foregroundStyle(Fmt.scoreColor(item.score)).frame(width: 26, alignment: .trailing)
+                if Nav.shared.pane != .folder { Text("\(item.score)").font(.system(size: 11, weight: .semibold, design: .monospaced)).foregroundStyle(Fmt.scoreColor(item.score)).frame(width: 26, alignment: .trailing) }
                 if showFrom { Text(m.displayName).font(.system(size: 13, weight: m.unread ? .semibold : .regular)).lineLimit(1).frame(width: 110, alignment: .leading) }
                 (Text(m.subject).fontWeight(m.unread ? .semibold : .regular) + Text("  " + MailText.excerpt(m.snippet, 140)).foregroundColor(.secondary))
                     .font(.system(size: 13)).lineLimit(1).foregroundStyle(m.unread ? Color.primary : .secondary)
@@ -408,7 +438,10 @@ struct MessageRow: View {
         .onHover { hover = $0 }
         .contextMenu {
             Button("Mark as read") { mail.markRead(m) }
-            Button("Archive") { mail.archive(m) }
+            if case .folder = container {
+                Button("Move to inbox") { mail.apply(.unfile, to: [m], container: container) }
+                Button("Remove from folder (keep in All Mail)") { mail.archive(m) }
+            } else { Button("Archive") { mail.archive(m) } }
             Divider()
             Button("File everything from \(m.displayName) in a folder") { mail.fileSender(m) }
             Divider()

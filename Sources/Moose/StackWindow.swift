@@ -3,12 +3,16 @@
 import SwiftUI
 import MooseKit
 
-/// State of the Stack window: a frozen deck of unread priority senders, one card at a time.
+/// State of the Stack window: a frozen deck of senders, one card at a time. The deck is the unread priority mail, or the mail in one folder.
 @MainActor @Observable
 final class StackModel {
     static let shared = StackModel()
     enum Mode { case browse, reading, replying }
     enum Scope { case sender, whole }
+    enum Source: Hashable { case priority, folder(String) }
+
+    private(set) var source = Source.priority
+    private(set) var loading = false
 
     private(set) var items: [DeckItem] = []
     var index = 0
@@ -23,20 +27,57 @@ final class StackModel {
     private let mail = MailModel.shared
 
     func rebuild() {
-        items = Deck.build(mail.scored, favourites: mail.favourites)
+        switch source {
+        case .priority: items = Deck.build(mail.scored, favourites: mail.favourites)
+        case .folder(let f): items = Folders.deck(mail.folderMessages[Folders.key(f)] ?? [], favourites: mail.favourites)
+        }
         handled = []; bodies = [:]; index = 0; reset()
     }
 
-    func release() { items = []; handled = []; bodies = [:]; reply = ""; cc = ""; reset() }
+    /// Switches what the deck is made of. A folder is read from Gmail first when it has not been opened yet.
+    func setSource(_ s: Source) {
+        source = s; rebuild()
+        guard case .folder(let f) = s else { return }
+        let cached = mail.folderLoaded(f)
+        loading = !cached
+        Task {
+            await mail.loadFolder(f)
+            guard source == s else { return }
+            loading = false
+            if !cached { rebuild() }
+        }
+    }
+
+    /// Every place the deck can come from, in the order ⇧⌘[ and ⇧⌘] walk through them.
+    var sources: [Source] { [.priority] + mail.folderNames.map { .folder($0) } }
+    func cycleSource(_ d: Int) {
+        let all = sources
+        guard let i = all.firstIndex(of: source) ?? (source == .priority ? 0 : nil) else { return }
+        setSource(all[(i + d + all.count) % all.count])
+    }
+    func title(_ s: Source) -> String { switch s { case .priority: "Priority"; case .folder(let f): f } }
+    var folder: String? { if case .folder(let f) = source { f } else { nil } }
+    private var container: MailContainer { folder.map { .folder($0) } ?? .inbox }
+
+    func folderRenamed(from old: String, to new: String) { if folder.map({ Folders.key($0) == Folders.key(old) }) == true { source = .folder(new) } }
+    func folderDeleted(_ name: String) { if folder.map({ Folders.key($0) == Folders.key(name) }) == true { setSource(.priority) } }
+
+    func release() { items = []; handled = []; bodies = [:]; reply = ""; cc = ""; source = .priority; loading = false; reset() }
     private func reset() { mode = .browse; showAll = false; scope = .sender }
 
-    private var present: Set<String> { Set(mail.data.messages.map(\.id)) }
+    private var pool: [MailMessage] {
+        switch source {
+        case .priority: mail.data.messages
+        case .folder(let f): mail.folderMessages[Folders.key(f)] ?? []
+        }
+    }
+    private var present: Set<String> { Set(pool.map(\.id)) }
     var live: [DeckItem] { let p = present; return items.filter { !$0.remaining(present: p, handled: handled).isEmpty } }
     var position: Int { min(index, max(0, live.count - 1)) }
     var item: DeckItem? { live.isEmpty ? nil : live[position] }
     var message: MailMessage? {
         guard let it = item, let id = it.current(present: present, handled: handled) else { return nil }
-        return mail.data.messages.first { $0.id == id }
+        return pool.first { $0.id == id }
     }
     var senderCount: Int { item?.remaining(present: present, handled: handled).count ?? 0 }
     var wholeCount: Int { let p = present; return live.reduce(0) { $0 + $1.remaining(present: p, handled: handled).count } }
@@ -99,7 +140,10 @@ final class StackModel {
 
     // MARK: Delete and mass actions
 
-    func deleteCurrent() { guard let m = message else { return }; mode = .browse; mail.apply(.trash, to: [m]) }
+    func deleteCurrent() { guard let m = message else { return }; mode = .browse; mail.apply(.trash, to: [m], container: container) }
+
+    /// Folder decks only: takes the card back to the inbox. Filing rules leave it there.
+    func moveToInbox() { guard folder != nil, let m = message else { return }; mode = .browse; mail.apply(.unfile, to: [m], container: container) }
 
     func applyAll(_ action: StackAction) {
         let p = present
@@ -109,7 +153,7 @@ final class StackModel {
         case .sender: ids = item?.remaining(present: p, handled: handled) ?? []; sender = item?.name
         case .whole: ids = live.flatMap { $0.remaining(present: p, handled: handled) }
         }
-        mail.apply(action, to: mail.messages(ids: ids), sender: sender)
+        mail.apply(action, to: mail.messages(ids: ids, in: container), sender: sender, container: container)
         reset()
     }
 }
@@ -183,8 +227,36 @@ struct StackView: View {
         .onChange(of: mail.lastSync) { _, _ in if st.live.isEmpty { st.rebuild() } }
     }
 
+    private var sourcePicker: some View {
+        Menu {
+            ForEach(st.sources, id: \.self) { s in
+                Button { st.setSource(s) } label: {
+                    if s == st.source { Label(st.title(s) + count(s), systemImage: "checkmark") } else { Text(st.title(s) + count(s)) }
+                }
+                if s == .priority, st.sources.count > 1 { Divider() }
+            }
+        } label: {
+            HStack(spacing: 5) {
+                Image(systemName: st.folder == nil ? "bolt.fill" : "folder").font(.system(size: 10.5))
+                Text(st.title(st.source)).font(.system(size: 12.5, weight: .semibold)).lineLimit(1)
+                Image(systemName: "chevron.down").font(.system(size: 8, weight: .bold))
+            }
+            .padding(.horizontal, 10).padding(.vertical, 4).foregroundStyle(Color.primary.opacity(0.85))
+            .background(Theme.card, in: RoundedRectangle(cornerRadius: 8)).overlay(RoundedRectangle(cornerRadius: 8).stroke(Theme.hairline))
+        }
+        .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize().help("Choose what to go through  ⇧⌘[ ⇧⌘]")
+    }
+
+    private func count(_ s: StackModel.Source) -> String {
+        switch s {
+        case .priority: let n = mail.count(.priority); return n > 0 ? "  \(n)" : ""
+        case .folder(let f): let n = mail.folderUnread(f); return n > 0 ? "  \(n)" : ""
+        }
+    }
+
     private var header: some View {
         HStack(spacing: 14) {
+            if mail.hasAccount, !mail.folderNames.isEmpty { sourcePicker.padding(.leading, 62) }
             Spacer()
             if !st.live.isEmpty {
                 Button { st.step(-1) } label: { Image(systemName: "chevron.left").padding(6).contentShape(Rectangle()) }.buttonStyle(.plain).disabled(st.position == 0).help("Previous  ←")
@@ -196,8 +268,8 @@ struct StackView: View {
 
     private var empty: some View {
         VStack(spacing: 6) {
-            Text(mail.hasAccount ? "Nothing needs you." : "Connect an account first.").font(.system(size: 24, weight: .bold))
-            Text(mail.hasAccount ? "Priority mail will stack up here." : "Open Moose to finish setup.").foregroundStyle(.secondary)
+            Text(!mail.hasAccount ? "Connect an account first." : st.loading ? "Loading “\(st.folder ?? "")”…" : st.folder != nil ? "Nothing in “\(st.folder ?? "")”." : "Nothing needs you.").font(.system(size: 24, weight: .bold))
+            Text(!mail.hasAccount ? "Open Moose to finish setup." : st.loading ? "Reading the Gmail label." : st.folder != nil ? "Mail filed here will stack up." : "Priority mail will stack up here.").foregroundStyle(.secondary)
         }.frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
@@ -231,7 +303,8 @@ struct StackView: View {
                 Segmented(options: [(StackModel.Scope.sender, "This sender · \(st.senderCount)"), (.whole, "Whole stack · \(st.wholeCount)")], selection: Bindable(st).scope)
                 Text("Applies to").font(.system(size: 12)).foregroundStyle(.secondary)
                 HStack(spacing: 10) {
-                    Button { st.applyAll(.archive) } label: { key("Archive all", "⇧E") }.buttonStyle(Pill(kind: .primary))
+                    if st.folder != nil { Button { st.applyAll(.unfile) } label: { key("To inbox", "⇧I") }.buttonStyle(Pill(kind: .primary)) }
+                    else { Button { st.applyAll(.archive) } label: { key("Archive all", "⇧E") }.buttonStyle(Pill(kind: .primary)) }
                     Button { st.applyAll(.markRead) } label: { key("Mark all read", "⇧U") }.buttonStyle(Pill())
                     Button { st.applyAll(.trash) } label: { key("Delete all", "⇧⌫") }.buttonStyle(Pill(kind: .danger))
                 }
@@ -240,6 +313,7 @@ struct StackView: View {
             HStack(spacing: 10) {
                 if st.mode == .browse { Button { st.read() } label: { key("Read", "Space") }.buttonStyle(Pill()) }
                 Button { st.startReply() } label: { key("Reply", "R") }.buttonStyle(Pill(kind: .primary))
+                if st.folder != nil { Button { st.moveToInbox() } label: { key("To inbox", "I") }.buttonStyle(Pill()) }
                 Button { st.deleteCurrent() } label: { key("Delete", "⌫") }.buttonStyle(Pill(kind: .danger))
                 Button { st.showAll = true } label: { key("All ▾", "A") }.buttonStyle(Pill()).foregroundStyle(.secondary)
             }
@@ -272,7 +346,11 @@ struct StackView: View {
                     Button("") { st.applyAll(.trash) }.keyboardShortcut(KeyEquivalent(Character(c)), modifiers: .shift)
                 }
                 Button("") { st.showAll.toggle() }.keyboardShortcut("a", modifiers: [])
-                Button("") { st.applyAll(.archive) }.keyboardShortcut("e", modifiers: .shift)
+                Button("") { if st.folder == nil { st.applyAll(.archive) } }.keyboardShortcut("e", modifiers: .shift)
+                Button("") { st.moveToInbox() }.keyboardShortcut("i", modifiers: [])
+                Button("") { if st.folder != nil { st.applyAll(.unfile) } }.keyboardShortcut("i", modifiers: .shift)
+                Button("") { st.cycleSource(-1) }.keyboardShortcut("[", modifiers: [.command, .shift])
+                Button("") { st.cycleSource(1) }.keyboardShortcut("]", modifiers: [.command, .shift])
                 Button("") { st.applyAll(.markRead) }.keyboardShortcut("u", modifiers: .shift)
                 Button("") { mail.undo() }.keyboardShortcut("z", modifiers: .command)
             }
@@ -291,6 +369,8 @@ private struct Card: View {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text(m.displayName).font(.system(size: 16, weight: .semibold))
                 Text(m.fromEmail).font(.system(size: 12.5)).foregroundStyle(.secondary).lineLimit(1)
+                if let f = st.folder { Label(f, systemImage: "folder").labelStyle(.titleAndIcon).font(.system(size: 11, weight: .semibold)).foregroundStyle(Theme.accent).lineLimit(1)
+                    .padding(.horizontal, 7).padding(.vertical, 2).background(Theme.accentSoft, in: RoundedRectangle(cornerRadius: 6)) }
                 Spacer(minLength: 8)
                 if st.senderCount > 1 { Text("1 of \(st.senderCount)").font(.system(size: 11.5)).foregroundStyle(.secondary) }
                 Text(Fmt.time(m.date)).font(.system(size: 12.5)).foregroundStyle(.secondary)

@@ -25,7 +25,8 @@ Never call a destructive tool without asking me first.
 - **Stacked.** One card per sender, across all your Gmail addresses, ranked together.
 - **Priority assessment.** Every message gets a transparent 0–100 score from signals on your Mac: favourites, people you write to, questions, deadlines, money, security notices, unread, recency. The *why* is shown next to each stack.
 - **Noise free.** Newsletters, promos and automated mail are muted (never deleted). Text only: HTML is stripped and images and tracking pixels are never loaded.
-- **Smart routing.** Plain-language rules: `favourite maya@acme.com`, `mute newsletters, promos`, `mute news@club.com for a week`, `boost invoice, payment by 25`, and folders: `move emails from cassiobury school to Cassiobury School` labels that mail in Gmail, takes it out of the inbox, and keeps filing new mail (undo from the toast).
+- **Smart routing.** Plain-language rules: `favourite maya@acme.com`, `mute newsletters, promos`, `mute news@club.com for a week`, `boost invoice, payment by 25`, and folders: `move emails from stripe.com to Receipts` labels that mail in Gmail, takes it out of the inbox, and keeps filing new mail (undo from the toast).
+- **Folders.** Filed mail is not lost: every folder is in the sidebar (the first five, the rest under "N more"), opens as stacks, and goes through the Stack window (⌘T, source picker or ⇧⌘[ ⇧⌘]). Drag to reorder; right-click to mark all read, move to inbox, clear, rename, empty or delete.
 - **Favourite stacking.** Star a sender and they always rank high and are never auto-muted.
 - **MCP-first.** `moose-mcp` ships inside the app. Everything you can do in the window, an agent can do. You decide how much: *Read only*, *Draft & ask* (every send needs your approval in a native dialog) or *Full access* (sends after an undo window).
 - **Stack window (⌘T).** The quiet way through your priority mail: one card at a time, nothing else. `←` `→` to move, **Read**, **Reply**, **Delete** (Gmail Trash, recoverable for 30 days), and **All ▾** for mass actions: archive, mark read or delete everything from this sender or the whole stack. No confirmation dialogs; every action shows an Undo bar and `⌘Z` restores it.
@@ -71,7 +72,7 @@ swift build && swift test && scripts/bundle.sh && open dist/Moose.app
 
 ## MCP tools
 
-`get_status` · `list_stacks` · `search_messages` · `list_rules` · `read_message` · `sync_mail` · `mark_read` · `archive_message` · `archive_messages` · `trash_messages` · `undo_last` · `set_favourite` · `mute_sender` · `create_rule` · `delete_rule` · `draft_reply` · `send_reply` · `draft_email` · `send_email`
+`get_status` · `list_stacks` · `search_messages` · `list_rules` · `read_message` · `sync_mail` · `mark_read` · `archive_message` · `archive_messages` · `trash_messages` · `undo_last` · `set_favourite` · `mute_sender` · `create_rule` · `delete_rule` · `list_folders` · `list_folder` · `folder_action` · `move_to_inbox` · `rename_folder` · `move_folder` · `set_folder_filing` · `delete_folder` · `draft_reply` · `send_reply` · `draft_email` · `send_email`
 
 Connect agents from **Agents** in the sidebar (Claude Code, Claude Desktop, Cursor, Windsurf, Gemini CLI, Codex CLI), or manually:
 

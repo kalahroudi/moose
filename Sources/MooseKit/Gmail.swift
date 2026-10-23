@@ -74,9 +74,19 @@ public actor GmailClient {
         return headers.compactMap { $0["value"] as? String }.flatMap { $0.split(separator: ",").map { MailText.parseAddress(String($0)).email } }
     }
 
-    func listIDs(query: String, limit: Int) async throws -> [String] {
-        let r = try await request("/messages", query: [.init(name: "q", value: query), .init(name: "maxResults", value: String(min(limit, 500)))])
-        return ((r["messages"] as? [[String: Any]]) ?? []).compactMap { $0["id"] as? String }
+    func listIDs(query: String, limit: Int, labelID: String? = nil) async throws -> [String] {
+        var ids: [String] = []
+        var page: String?
+        repeat {
+            var q: [URLQueryItem] = [.init(name: "maxResults", value: String(min(limit - ids.count, 500)))]
+            if !query.isEmpty { q.append(.init(name: "q", value: query)) }
+            if let labelID { q.append(.init(name: "labelIds", value: labelID)) }
+            if let page { q.append(.init(name: "pageToken", value: page)) }
+            let r = try await request("/messages", query: q)
+            ids += ((r["messages"] as? [[String: Any]]) ?? []).compactMap { $0["id"] as? String }
+            page = r["nextPageToken"] as? String
+        } while page != nil && ids.count < limit
+        return ids
     }
 
     func metadata(_ ids: [String]) async throws -> [MailMessage] {
@@ -161,7 +171,7 @@ public actor GmailClient {
         }
     }
 
-    /// The id of a user label (Gmail's "folder") by name, creating it when it doesn't exist. Nested names like "School/Cassiobury" work.
+    /// The id of a user label (Gmail's "folder") by name, creating it when it doesn't exist. Nested names like "Work/Clients" work.
     public func labelID(named name: String) async throws -> String {
         if let id = labelCache[name.lowercased()] { return id }
         let existing = ((try await request("/labels")["labels"] as? [[String: Any]]) ?? [])
@@ -171,6 +181,45 @@ public actor GmailClient {
         guard let id = made["id"] as? String else { throw GmailError.decode }
         labelCache[name.lowercased()] = id
         return id
+    }
+
+    private var labelsListedAt = Date.distantPast
+
+    /// The id of a label if it exists. Unlike `labelID(named:)` this never creates one, so looking at a folder is harmless.
+    public func existingLabelID(named name: String) async throws -> String? {
+        if let id = labelCache[name.lowercased()] { return id }
+        guard Date().timeIntervalSince(labelsListedAt) > 60 else { return nil }   // just looked: it isn't there
+        let existing = ((try await request("/labels")["labels"] as? [[String: Any]]) ?? [])
+        labelsListedAt = Date()
+        for l in existing { if let n = l["name"] as? String, let id = l["id"] as? String { labelCache[n.lowercased()] = id } }
+        return labelCache[name.lowercased()]
+    }
+
+    /// How many messages carry a label, and how many of those are unread.
+    public func labelStats(_ id: String) async throws -> (total: Int, unread: Int) {
+        let r = try await request("/labels/\(id)")
+        return ((r["messagesTotal"] as? Int) ?? 0, (r["messagesUnread"] as? Int) ?? 0)
+    }
+
+    /// The newest messages under a label. Messages whose ids are in `skip` are not fetched again; the caller already has them.
+    public func labelMessages(labelID: String, limit: Int, skip: Set<String>) async throws -> (ids: [String], fresh: [MailMessage]) {
+        let ids = try await listIDs(query: "", limit: limit, labelID: labelID)
+        return (ids, try await metadata(ids.filter { !skip.contains($0) }))
+    }
+
+    /// Every message id under a label, up to `limit`.
+    public func labelIDs(_ labelID: String, limit: Int = 2000) async throws -> [String] { try await listIDs(query: "", limit: limit, labelID: labelID) }
+
+    public func renameLabel(_ id: String, from old: String, to name: String) async throws {
+        _ = try await request("/labels/\(id)", method: "PATCH", body: ["name": name])
+        labelCache[old.lowercased()] = nil
+        labelCache[name.lowercased()] = id
+    }
+
+    /// Deleting a label never deletes mail: the messages simply lose it and stay in All Mail.
+    public func deleteLabel(_ id: String, named name: String) async throws {
+        _ = try await request("/labels/\(id)", method: "DELETE")
+        labelCache[name.lowercased()] = nil
     }
 
     public func markRead(_ id: String) async throws { try await modify(id, remove: ["UNREAD"]) }

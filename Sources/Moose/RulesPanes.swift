@@ -15,13 +15,13 @@ struct RoutingPane: View {
             PaneHeader(title: "Routing", subtitle: "Plain-language rules: favourite, boost or file mail into a folder. Moose scores the rest on its own.")
             ScrollView {
                 VStack(alignment: .leading, spacing: 10) {
-                    RuleInput(text: $text, hint: $hint, placeholder: "move emails from cassiobury school to Cassiobury School   ·   favourite maya@acme.com", examples: ["move emails from stripe.com to Receipts", "favourite maya@acme.com", "boost invoice, payment by 25"])
+                    RuleInput(text: $text, hint: $hint, placeholder: "move emails from stripe.com to Receipts   ·   favourite maya@acme.com", examples: ["move emails from stripe.com to Receipts", "favourite maya@acme.com", "boost invoice, payment by 25"])
                     if !mail.favourites.isEmpty {
                         RuleCard(symbol: "star.fill", title: "from " + mail.data.favourites.sorted().joined(separator: ", "), action: "always Priority", meta: "favourites · \(mail.favourites.count)", onDelete: nil, enabled: nil)
                     }
                     ForEach(rules) { r in RuleCard(rule: r) }
                     if rules.isEmpty && mail.favourites.isEmpty {
-                        Text("No rules yet. Star a sender, or describe a rule above, like “move emails from cassiobury school to Cassiobury School”.").font(.system(size: 12.5)).foregroundStyle(.secondary).padding(.top, 20).frame(maxWidth: .infinity)
+                        Text("No rules yet. Star a sender, or describe a rule above, like “move emails from stripe.com to Receipts”.").font(.system(size: 12.5)).foregroundStyle(.secondary).padding(.top, 20).frame(maxWidth: .infinity)
                     }
                 }.padding(16)
             }
@@ -82,7 +82,9 @@ struct RuleInput: View {
         guard let r = RuleParser.parse(text) else {
             hint = "Moose didn't understand that. Try \"mute newsletters for a week\", \"favourite maya@acme.com\", \"boost invoice by 25\" or \"move emails from stripe.com to Receipts\"."; done = nil; return
         }
-        done = MailModel.shared.addRule(r); text = ""; hint = nil
+        let said = MailModel.shared.addRule(r)
+        if let f = r.folder { MailModel.shared.announce(said, folder: f); done = nil } else { done = said }
+        text = ""; hint = nil
     }
 }
 

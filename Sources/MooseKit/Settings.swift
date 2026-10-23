@@ -30,7 +30,29 @@ public struct MooseData: Codable, Sendable {
     public var syncedAt: [String: Date] = [:]
     /// Reply text the user is in the middle of writing, by message id. Survives quit and crash (rule: work is never lost).
     public var composeDrafts: [String: String] = [:]
+    /// Folder names in the order the user arranged them. Folders themselves come from the filing rules (see `Folders`).
+    public var folderOrder: [String] = []
+    /// Messages the user moved back to the inbox from a folder. Filing rules leave them alone.
+    public var keepInInbox: [String] = []
     public init() {}
+
+    /// Every key is optional on disk, so a file written by an older version still loads instead of being treated as corrupt.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        version = try c.decodeIfPresent(Int.self, forKey: .version) ?? 1
+        accounts = try c.decodeIfPresent([MailAccount].self, forKey: .accounts) ?? []
+        favourites = try c.decodeIfPresent([String].self, forKey: .favourites) ?? []
+        rules = try c.decodeIfPresent([Rule].self, forKey: .rules) ?? []
+        repliedTo = try c.decodeIfPresent([String].self, forKey: .repliedTo) ?? []
+        agentAccess = try c.decodeIfPresent(AgentAccess.self, forKey: .agentAccess) ?? .draftAndAsk
+        undoSeconds = try c.decodeIfPresent(Int.self, forKey: .undoSeconds) ?? 30
+        sendSignature = try c.decodeIfPresent(String.self, forKey: .sendSignature) ?? ""
+        messages = try c.decodeIfPresent([MailMessage].self, forKey: .messages) ?? []
+        syncedAt = try c.decodeIfPresent([String: Date].self, forKey: .syncedAt) ?? [:]
+        composeDrafts = try c.decodeIfPresent([String: String].self, forKey: .composeDrafts) ?? [:]
+        folderOrder = try c.decodeIfPresent([String].self, forKey: .folderOrder) ?? []
+        keepInInbox = try c.decodeIfPresent([String].self, forKey: .keepInInbox) ?? []
+    }
 
     public var context: PriorityContext {
         PriorityContext(favourites: Set(favourites), repliedTo: Set(repliedTo), rules: rules)

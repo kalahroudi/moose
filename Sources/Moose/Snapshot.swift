@@ -23,10 +23,11 @@ enum SnapshotMode {
     struct Shot { let name: String; let dark: Bool; let size: CGSize; let make: @MainActor () -> AnyView }
 
     @MainActor static var shots: [Shot] {
-        func manager(_ name: String, _ p: Pane, dark: Bool = false, setup: Bool = false, open: Bool = false, tab: SettingsPane.Tab = .general) -> Shot {
+        func manager(_ name: String, _ p: Pane, dark: Bool = false, setup: Bool = false, open: Bool = false, tab: SettingsPane.Tab = .general, folder: String? = nil) -> Shot {
             Shot(name: name + (dark ? "-dark" : ""), dark: dark, size: CGSize(width: 1100, height: 720)) {
                 let d = Demo.data()
-                MailModel.shared.loadDemo(setup ? MooseData() : d, signedIn: !setup)
+                MailModel.shared.loadDemo(setup ? MooseData() : d, signedIn: !setup, folders: Demo.folders())
+                Nav.shared.folder = folder
                 Nav.shared.pane = p; Nav.shared.settingsTab = tab; Nav.shared.account = nil
                 Nav.shared.open = open ? MailModel.shared.scored.first { $0.message.fromEmail == "maya@acme.com" }?.message : nil
                 return AnyView(ManagerView())
@@ -40,7 +41,7 @@ enum SnapshotMode {
         }
         func stack(_ name: String, dark: Bool, _ configure: @escaping @MainActor (StackModel) -> Void) -> Shot {
             Shot(name: name, dark: dark, size: CGSize(width: 680, height: 620)) {
-                MailModel.shared.loadDemo(Demo.data(), signedIn: true)
+                MailModel.shared.loadDemo(Demo.data(), signedIn: true, folders: Demo.folders())
                 let st = StackModel.shared; st.rebuild(); configure(st)
                 return AnyView(StackView())
             }
@@ -50,6 +51,7 @@ enum SnapshotMode {
                 stack("stack-reply", dark: false) { st in
                     st.index = 0; st.mode = .replying
                     st.reply = "Hi Maya, thanks. 30 days works for me. I'll sign off Thursday, no call needed.\nBest, M." },
+                stack("stack-folder", dark: true) { st in st.setSource(.folder("Work/Clients")) },
                 stack("stack-all", dark: true) { st in st.index = 1; st.showAll = true },
                 stack("stack-undone", dark: false) { st in
                     st.index = 2; MailModel.shared.apply(.archive, to: MailModel.shared.messages(ids: ["4", "5"]), sender: "Stripe") },
@@ -57,7 +59,8 @@ enum SnapshotMode {
                 manager("priority", .priority), manager("priority", .priority, dark: true),
                 manager("thread", .priority, open: true), manager("routing", .routing), manager("muting", .muting, dark: true),
                 manager("agents", .agents, dark: true), manager("setup", .priority, dark: true, setup: true), manager("settings", .settings, tab: .accounts),
-                manager("help", .help)]
+                manager("help", .help),
+                manager("folder", .folder, folder: "Receipts"), manager("folder", .folder, dark: true, folder: "Work/Clients"), manager("folders", .folders)]
     }
 
     @MainActor static func render(_ shot: Shot, to dir: String) async {
@@ -102,12 +105,62 @@ struct PopoverShot: View {
 @MainActor enum Demo {
     static func install() { AppModel.shared.demo = true; AppModel.shared.status = "3 stacks need you"; AppModel.shared.loadedOnce = true; AppModel.shared.updatedAt = .now }
 
+    /// Mail that filing rules moved out of the inbox, for the folder screens. Every folder has mail so no screen shows an empty gap.
+    static func folders() -> [String: [MailMessage]] {
+        func at(_ h: Int, daysAgo: Int = 0) -> Date {
+            let c = Calendar.current
+            return c.date(byAdding: .day, value: -daysAgo, to: c.date(bySettingHour: h, minute: 12, second: 0, of: Date())!)!
+        }
+        var n = 0
+        func m(_ name: String, _ from: String, _ subj: String, _ snip: String, _ date: Date, unread: Bool = false) -> MailMessage {
+            n += 1
+            return MailMessage(id: "f\(n)", threadId: "f\(n)", account: "me@gmail.com", fromName: name, fromEmail: from, subject: subj, snippet: snip, date: date, unread: unread)
+        }
+        return [
+            "Receipts": [
+                m("Stripe", "receipts@stripe.com", "Your receipt from Acme Ltd #2041", "Amount paid $48.00. Paid with Visa ending 4242.", at(7), unread: true),
+                m("Stripe", "receipts@stripe.com", "Your receipt from Figma #1190", "Amount paid $15.00.", at(7, daysAgo: 3)),
+                m("Stripe", "receipts@stripe.com", "Your receipt from Notion #8842", "Amount paid $10.00.", at(7, daysAgo: 9)),
+                m("Figma", "billing@figma.example", "Invoice for October", "Your invoice for the Professional plan is ready.", at(9, daysAgo: 2), unread: true),
+                m("Cloudhost", "billing@cloudhost.example", "Payment received", "Thanks, we received your payment of $22.00.", at(10, daysAgo: 5))],
+            "Travel": [
+                m("SkyAir", "bookings@skyair.example", "Your booking is confirmed", "Flight to Madrid on 3 November, seat 14A.", at(13, daysAgo: 4), unread: true),
+                m("SkyAir", "checkin@skyair.example", "Check-in opens in 24 hours", "Check in online to choose your seat.", at(8, daysAgo: 1), unread: true),
+                m("Stayly", "reservations@stayly.example", "Reservation confirmed: Hotel Alba", "3 nights from 3 November.", at(16, daysAgo: 6))],
+            "Banking": [
+                m("Northbank", "statements@northbank.example", "Your October statement is ready", "Your statement for account ending 0192 is available.", at(6, daysAgo: 1), unread: true),
+                m("Northbank", "alerts@northbank.example", "Large payment alert", "A payment of $240.00 left your account.", at(14, daysAgo: 3)),
+                m("Northbank", "statements@northbank.example", "Your September statement is ready", "Your statement for account ending 0192 is available.", at(6, daysAgo: 31))],
+            "Work/Clients": [
+                m("Dana Reyes", "dana@orbit.example", "Mockups for review", "Attached are the latest mockups. Feedback by Thursday?", at(11), unread: true),
+                m("Dana Reyes", "dana@orbit.example", "Re: Scope of work", "Happy with the revised scope. Sending the contract today.", at(15, daysAgo: 2)),
+                m("Sam Okafor", "sam@harbor.example", "Invoice 1043 approved", "We approved the invoice, payment goes out on the 28th.", at(9, daysAgo: 4)),
+                m("Sam Okafor", "sam@harbor.example", "Kick-off call", "Does Tuesday at 10 work for the kick-off?", at(12, daysAgo: 8))],
+            "Health": [
+                m("Greenfield Clinic", "appointments@greenfield.example", "Appointment reminder", "Your appointment is on Monday at 09:30.", at(8, daysAgo: 1), unread: true),
+                m("Greenfield Clinic", "appointments@greenfield.example", "Your test results", "Your results are ready to view in the patient portal.", at(10, daysAgo: 6)),
+                m("PharmaPlus", "orders@pharmaplus.example", "Your prescription is ready", "Collect from the counter within 7 days.", at(13, daysAgo: 12))],
+            "Reading list": [
+                m("The Long Read", "editor@longread.example", "The quiet rise of tiny software", "This week: how small teams build products people love.", at(6), unread: true),
+                m("Weekly Digest", "hello@digest.example", "Ten ideas worth your time", "Our picks for the week.", at(6, daysAgo: 4)),
+                m("The Long Read", "editor@longread.example", "Why we stopped using meetings", "A field report from three remote teams.", at(6, daysAgo: 11))],
+            "Home": [
+                m("Cityline Utilities", "bills@cityline.example", "Your energy bill is ready", "Your bill of $86.40 is due on 5 November.", at(7, daysAgo: 2), unread: true),
+                m("Cityline Utilities", "bills@cityline.example", "Meter reading reminder", "Please submit a meter reading this month.", at(7, daysAgo: 10)),
+                m("Pat Morgan", "pat@lettings.example", "Re: Boiler service", "The engineer can visit on Friday between 8 and 12.", at(17, daysAgo: 5))],
+        ]
+    }
+
     static func data() -> MooseData {
         var d = MooseData()
         d.accounts = [MailAccount(email: "me@gmail.com", colorIndex: 0), MailAccount(email: "work@acme.com", colorIndex: 1), MailAccount(email: "studio@me.dev", colorIndex: 2)]
         d.favourites = ["maya@acme.com", "mum@family.example"]
         d.repliedTo = ["ahmad@example.com", "billing@stripe.com"]
-        d.rules = [Rule(senders: ["club.example"], action: .mute, source: "you"), Rule(keywords: ["invoice", "payment"], action: .boost(25), source: "Claude")]
+        d.rules = [Rule(senders: ["club.example"], action: .mute, source: "you"), Rule(keywords: ["invoice", "payment"], action: .boost(25), source: "Claude"),
+                   Rule(senders: ["stripe.com", "billing@"], action: .file("Receipts"), source: "you"), Rule(keywords: ["flight", "booking", "reservation"], action: .file("Travel"), source: "you"),
+                   Rule(senders: ["northbank.example"], action: .file("Banking"), source: "you"), Rule(senders: ["orbit.example", "harbor.example"], action: .file("Work/Clients"), source: "you"),
+                   Rule(senders: ["greenfield.example", "pharmaplus.example"], action: .file("Health"), source: "you"), Rule(senders: ["longread.example", "digest.example"], action: .file("Reading list"), source: "you"),
+                   Rule(senders: ["cityline.example"], action: .file("Home"), source: "you")]
         func at(_ h: Int, _ m: Int, daysAgo: Int = 0) -> Date {
             let c = Calendar.current
             return c.date(byAdding: .day, value: -daysAgo, to: c.date(bySettingHour: h, minute: m, second: 0, of: Date())!)!
