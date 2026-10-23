@@ -61,14 +61,14 @@ final class MailModel {
     }
     private var unsubCache: [String: UnsubscribeOption] = [:]
     private(set) var undoStack: [UndoEntry] = []
-    /// Mail that filing rules moved out of the inbox, by `Folders.key`. Loaded from the Gmail label when a folder is opened; not saved to disk.
-    private(set) var folderMessages: [String: [MailMessage]] = [:]
+    /// Mail that filing rules moved out of the inbox, by `Folders.key`. Saved to disk (`MooseData.folderCache`) so a folder opens at once; refreshed from the Gmail label when it is opened.
+    private(set) var folderMessages: [String: [MailMessage]] = [:] { didSet { if !demo { data.folderCache = folderMessages; saveSoon() } } }
     private(set) var folderStats: [String: FolderStats] = [:]
     private(set) var folderLoading: Set<String> = []
     private var folderStatsAt = Date.distantPast
     private(set) var undoToast: UndoEntry?
 
-    private init() { data = store.load(); rescore() }
+    private init() { data = store.load(); folderMessages = data.folderCache; rescore() }
 
     var accounts: [MailAccount] { data.accounts }
     var favourites: Set<String> { Set(data.favourites) }
@@ -96,6 +96,10 @@ final class MailModel {
 
     func persistSoon() {
         rescore()
+        saveSoon()
+    }
+
+    private func saveSoon() {
         if demo { return }
         saveTask?.cancel()
         let snapshot = data

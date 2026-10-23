@@ -36,6 +36,8 @@ public struct MooseData: Codable, Sendable {
     public var keepInInbox: [String] = []
     /// Snoozed messages and "remind me if no reply" reminders (see `FollowUps`).
     public var followUps: [FollowUp] = []
+    /// The newest mail of each folder (by `Folders.key`), so a folder opens at once and is refreshed from Gmail behind it.
+    public var folderCache: [String: [MailMessage]] = [:]
     public init() {}
 
     /// Every key is optional on disk, so a file written by an older version still loads instead of being treated as corrupt.
@@ -55,6 +57,7 @@ public struct MooseData: Codable, Sendable {
         folderOrder = try c.decodeIfPresent([String].self, forKey: .folderOrder) ?? []
         keepInInbox = try c.decodeIfPresent([String].self, forKey: .keepInInbox) ?? []
         followUps = try c.decodeIfPresent([FollowUp].self, forKey: .followUps) ?? []
+        folderCache = try c.decodeIfPresent([String: [MailMessage]].self, forKey: .folderCache) ?? [:]
     }
 
     public var context: PriorityContext {
