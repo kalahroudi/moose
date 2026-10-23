@@ -245,6 +245,7 @@ struct Pill: ButtonStyle {
         @Environment(\.isEnabled) private var enabled
         var body: some View {
             configuration.label.font(.system(size: 12.5, weight: kind == .primary ? .semibold : .regular))
+                .lineLimit(1).fixedSize()
                 .padding(.horizontal, 12).padding(.vertical, 6)
                 .foregroundStyle(foreground)
                 .background(background, in: RoundedRectangle(cornerRadius: 8))
