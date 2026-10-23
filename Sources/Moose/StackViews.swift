@@ -30,6 +30,9 @@ final class ListState {
     func setUnreadOnly(_ on: Bool, _ p: Pane) { if on { unreadPanes.insert(p) } else { unreadPanes.remove(p) } }
     func clearFilters() { let s = query.sort; query = StackQuery(); query.sort = s }
 
+    /// Jumps the highlight to the first or last row, which scrolls the list with it.
+    func jump(toEnd: Bool) { selection = (toEnd ? order.last : order.first)?.id }
+
     func move(_ d: Int) {
         guard !order.isEmpty else { return }
         let i = order.firstIndex { $0.id == selection }
@@ -92,10 +95,14 @@ struct StackListPane: View {
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(spacing: 12) {
+                        Color.clear.frame(height: 0).id("list-top")
                         if ls.layout == .messages { flatList(visible) } else { ForEach(stacks) { StackCard(stack: $0, expanded: expandedBinding($0)) } }
                         if visible.isEmpty { empty }
+                        Color.clear.frame(height: 0).id("list-end")
                     }.padding(16)
                 }
+                .overlay(alignment: .bottomTrailing) { if !visible.isEmpty { jumpButtons(proxy) } }
+                .background { jumpKeys(proxy) }
                 .onChange(of: ls.selection) { _, id in if let id { withAnimation(.easeOut(duration: 0.12)) { proxy.scrollTo(id) } } }
             }
             if pane == .priority, !mail.mutedSummary().isEmpty {
@@ -108,6 +115,34 @@ struct StackListPane: View {
             ls.order = visible.map(\.message)
             if let s = ls.selection, !visible.contains(where: { $0.id == s }) { ls.selection = nil }
         }
+    }
+
+    private func jump(_ proxy: ScrollViewProxy, toEnd: Bool) {
+        ls.jump(toEnd: toEnd)
+        withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo(toEnd ? "list-end" : "list-top", anchor: toEnd ? .bottom : .top) }
+    }
+
+    private func jumpButtons(_ proxy: ScrollViewProxy) -> some View {
+        VStack(spacing: 6) {
+            jumpButton("chevron.up.2", "Jump to the top  ⌘↑") { jump(proxy, toEnd: false) }
+            jumpButton("chevron.down.2", "Jump to the bottom  ⌘↓") { jump(proxy, toEnd: true) }
+        }.padding(14)
+    }
+
+    private func jumpButton(_ symbol: String, _ help: String, _ action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol).font(.system(size: 11, weight: .semibold)).foregroundStyle(.secondary)
+                .frame(width: 28, height: 28).background(Theme.card, in: Circle()).overlay(Circle().stroke(Theme.hairline))
+        }.buttonStyle(.plain).help(help).accessibilityLabel(help)
+    }
+
+    private func jumpKeys(_ proxy: ScrollViewProxy) -> some View {
+        ZStack {
+            Button("") { jump(proxy, toEnd: false) }.keyboardShortcut(.upArrow, modifiers: .command)
+            Button("") { jump(proxy, toEnd: true) }.keyboardShortcut(.downArrow, modifiers: .command)
+            Button("") { jump(proxy, toEnd: false) }.keyboardShortcut(.home, modifiers: [])
+            Button("") { jump(proxy, toEnd: true) }.keyboardShortcut(.end, modifiers: [])
+        }.opacity(0).frame(width: 0, height: 0).allowsHitTesting(false)
     }
 
     private func expandedBinding(_ s: MailStack) -> Binding<Bool> {
@@ -134,7 +169,7 @@ struct StackListPane: View {
             Segmented(options: [(ListState.Layout.stacks, "Stacks"), (.messages, "All messages")], selection: Bindable(ls).layout)
             Chip(title: "Unread", symbol: "circle.fill", active: ls.isUnreadOnly(pane)) { ls.setUnreadOnly(!ls.isUnreadOnly(pane), pane) }
             FilterMenu(symbol: "arrow.up.arrow.down", options: StackSort.allCases, label: \.label, selection: Bindable(ls).query.sort, active: ls.query.sort != .priority)
-            FilterMenu(symbol: "calendar", options: DateRange.allCases, label: \.label, selection: Bindable(ls).query.range, active: ls.query.range != .any)
+            DateFilter(query: Bindable(ls).query)
             FilterMenu(symbol: "person.2", options: Origin.allCases, label: \.label, selection: Bindable(ls).query.origin, active: ls.query.origin != .all)
             Spacer(minLength: 4)
             if ls.query.filtering { Button("Clear filters") { ls.clearFilters() }.buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(Theme.accent) }
@@ -198,6 +233,71 @@ private struct Chip: View {
             .background(active ? Theme.accentSoft : Theme.fill, in: Capsule())
             .contentShape(Capsule())
         }.buttonStyle(.plain)
+    }
+}
+
+/// The date chip: presets plus a custom from/to range picked in a popover.
+private struct DateFilter: View {
+    @Binding var query: StackQuery
+    @State private var picking = false
+
+    private var label: String {
+        guard query.range == .custom else { return query.range.label }
+        let f = { (d: Date) in d.formatted(.dateTime.day().month(.abbreviated)) }
+        switch (query.from, query.to) {
+        case let (a?, b?): return "\(f(a)) – \(f(b))"
+        case let (a?, nil): return "Since \(f(a))"
+        case let (nil, b?): return "Until \(f(b))"
+        default: return "Custom range"
+        }
+    }
+
+    var body: some View {
+        let active = query.range != .any
+        Menu {
+            ForEach(DateRange.allCases.filter { $0 != .custom }, id: \.self) { r in
+                Button { query.range = r } label: { if r == query.range { Label(r.label, systemImage: "checkmark") } else { Text(r.label) } }
+            }
+            Divider()
+            Button {
+                if query.from == nil && query.to == nil { query.from = Calendar.current.date(byAdding: .day, value: -7, to: Date()); query.to = Date() }
+                query.range = .custom; picking = true
+            } label: { if query.range == .custom { Label("Custom range…", systemImage: "checkmark") } else { Text("Custom range…") } }
+        } label: {
+            HStack(spacing: 5) {
+                Image(systemName: "calendar").font(.system(size: 10.5))
+                Text(label).font(.system(size: 12, weight: active ? .semibold : .regular)).lineLimit(1)
+            }
+            .padding(.horizontal, 9).padding(.vertical, 4)
+            .foregroundStyle(active ? Theme.accent : .secondary)
+            .background(active ? Theme.accentSoft : Theme.fill, in: Capsule())
+        }
+        .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+        .popover(isPresented: $picking, arrowEdge: .bottom) { picker }
+    }
+
+    private var picker: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Custom date range").font(.system(size: 13, weight: .semibold))
+            bound("From", $query.from, fallback: Date())
+            bound("To", $query.to, fallback: Date())
+            HStack {
+                Button("Clear") { query.range = .any; query.from = nil; query.to = nil; picking = false }.buttonStyle(Pill())
+                Spacer()
+                Button("Done") { picking = false }.buttonStyle(Pill())
+            }
+        }.padding(14).frame(width: 260)
+    }
+
+    /// A date picker with an on/off switch, so either end of the range can stay open.
+    private func bound(_ title: String, _ date: Binding<Date?>, fallback: Date) -> some View {
+        HStack {
+            Toggle(title, isOn: Binding { date.wrappedValue != nil } set: { date.wrappedValue = $0 ? fallback : nil }).toggleStyle(.checkbox)
+            Spacer()
+            if date.wrappedValue != nil {
+                DatePicker("", selection: Binding { date.wrappedValue ?? fallback } set: { date.wrappedValue = $0 }, displayedComponents: .date).labelsHidden()
+            }
+        }
     }
 }
 
@@ -269,7 +369,14 @@ struct StackCard: View {
             Text("\(stack.messages.count) \(stack.messages.count == 1 ? "message" : "messages")").font(.system(size: 11.5)).foregroundStyle(.secondary)
             Spacer(minLength: 8)
             Text(stack.why).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
-        }.padding(.horizontal, 10).padding(.vertical, 7)
+            if stack.messages.count > 3 {
+                Image(systemName: "chevron.right").font(.system(size: 10, weight: .semibold)).foregroundStyle(.secondary)
+                    .rotationEffect(.degrees(expanded ? 90 : 0))
+            }
+        }
+        .padding(.horizontal, 10).padding(.vertical, 7)
+        .contentShape(Rectangle())
+        .onTapGesture { if stack.messages.count > 3 { withAnimation(.easeOut(duration: 0.15)) { expanded.toggle() } } }
     }
 }
 
