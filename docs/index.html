@@ -1,0 +1,41 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Moose: Gmail without the noise</title>
+<meta name="description" content="A native, text-only, stacked, multi-account Gmail client for the Mac menu bar, built for AI agents.">
+<link rel="icon" href="icon.png">
+<style>
+:root{--bg:#fbf9f5;--tx:#25221d;--mu:#8a8478;--ac:#b8651b;--card:#fff;--hair:#e4ded3}
+@media(prefers-color-scheme:dark){:root{--bg:#17201d;--tx:#e8e4da;--mu:#8d9a94;--ac:#f0b26b;--card:#1e2926;--hair:#2a3733}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--tx);font:17px/1.55 -apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif}
+main{max-width:980px;margin:0 auto;padding:64px 24px}
+header{text-align:center}header img{width:120px}h1{font-size:52px;letter-spacing:-.03em;margin:12px 0 4px}
+.lead{font-size:21px;color:var(--mu);max-width:640px;margin:0 auto 28px}
+.btn{display:inline-block;background:var(--ac);color:var(--bg);padding:11px 24px;border-radius:999px;font-weight:600;text-decoration:none;margin:4px}
+.btn.o{background:none;color:var(--ac);border:1px solid var(--ac)}
+.hero{width:100%;border-radius:14px;margin:44px 0;box-shadow:0 20px 60px rgba(0,0,0,.25)}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px}
+.card{background:var(--card);border:1px solid var(--hair);border-radius:12px;padding:18px}.card b{display:block;margin-bottom:4px}.card span{color:var(--mu);font-size:15px}
+h2{font-size:28px;letter-spacing:-.02em;margin:64px 0 16px}
+pre{background:var(--card);border:1px solid var(--hair);border-radius:10px;padding:14px;overflow:auto;font-size:14px}
+.shots{display:grid;grid-template-columns:repeat(auto-fit,minmax(380px,1fr));gap:20px}.shots img{width:100%;border-radius:10px;border:1px solid var(--hair)}
+footer{text-align:center;color:var(--mu);margin-top:64px;font-size:14px}a{color:var(--ac)}
+</style></head><body><main>
+<header><img src="icon.png" alt="Moose icon"><h1>Moose</h1>
+<p class="lead">Gmail without the noise. Text only, stacked by sender, ranked by what matters, and built to be driven by your AI agent.</p>
+<a class="btn" href="https://github.com/kalahroudi/moose/releases">Download for Mac</a><a class="btn o" href="https://github.com/kalahroudi/moose">View on GitHub</a></header>
+<img class="hero" src="screenshots/priority-dark.png" alt="Moose priority stacks">
+<div class="grid">
+<div class="card"><b>Stacked</b><span>One card per sender across all your Gmail addresses, ranked together.</span></div>
+<div class="card"><b>Priority, explained</b><span>A 0–100 score worked out on your Mac, with the reason shown next to each stack.</span></div>
+<div class="card"><b>Noise free</b><span>Newsletters and promos are muted, never deleted. Text only: no images, no tracking pixels.</span></div>
+<div class="card"><b>Smart routing</b><span>Rules in plain English. Favourite a sender and they always rank high.</span></div>
+<div class="card"><b>MCP-first</b><span>Everything in the window is also an agent tool. You choose: read only, draft &amp; ask, or full access.</span></div>
+<div class="card"><b>Replies with Claude</b><span>Drafts in your voice through your own Claude CLI. No API key stored.</span></div>
+</div>
+<h2>Install</h2>
+<pre>curl -fsSL https://raw.githubusercontent.com/kalahroudi/moose/main/scripts/install.sh | bash</pre>
+<p>Moose is open source, so you sign in with a Google client that you own. The first-run guide opens the exact Google pages and imports the key for you. Nothing about your mail passes through anyone else.</p>
+<h2>Screens</h2>
+<div class="shots"><img src="screenshots/popover.png" alt="Menu bar popover"><img src="screenshots/thread.png" alt="Reply with Claude"><img src="screenshots/routing.png" alt="Routing rules"><img src="screenshots/agents-dark.png" alt="Agents and access"><img src="screenshots/setup-dark.png" alt="First-run setup"><img src="screenshots/muting-dark.png" alt="Muting"></div>
+<p style="color:var(--mu);font-size:14px">Sample data. <a href="mockup/index.html">Original design mockup</a>.</p>
+<footer>Apache-2.0 · <a href="https://github.com/kalahroudi/moose">github.com/kalahroudi/moose</a></footer>
+</main></body></html>

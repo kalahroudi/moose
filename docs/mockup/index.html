@@ -1,0 +1,217 @@
+<!doctype html><html><head><meta charset="utf-8"><title>moose — mockup</title>
+<style>
+:root{--font:-apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif;--mono:ui-monospace,"SF Mono",Menlo,monospace}
+*{box-sizing:border-box;margin:0}
+body{font:13px/1.4 var(--font);background:#d9d4cb;padding:48px;color:#222;-webkit-font-smoothing:antialiased}
+h1{font-size:28px;letter-spacing:-.02em} .sub{color:#6b665d;margin:4px 0 36px}
+h2{font-size:12px;text-transform:uppercase;letter-spacing:.1em;color:#6b665d;margin:44px 0 14px}
+.row{display:flex;gap:32px;align-items:flex-start;flex-wrap:wrap}
+.dark{--bg:#17201d;--side:#121a17;--card:#1e2926;--hair:#2a3733;--tx:#e8e4da;--mu:#8d9a94;--ac:#f0b26b;--onac:#2a1a05;--soft:rgba(240,178,107,.14);--ok:#7fc29b;--warn:#e6b450;--dng:#e57c6a}
+.light{--bg:#fbf9f5;--side:#f1ede6;--card:#ffffff;--hair:#e4ded3;--tx:#25221d;--mu:#8a8478;--ac:#b8651b;--onac:#fff;--soft:rgba(184,101,27,.10);--ok:#2f8a5b;--warn:#a87410;--dng:#c0452f}
+.win{background:var(--bg);color:var(--tx);border-radius:12px;box-shadow:0 0 0 .5px rgba(0,0,0,.4),0 24px 60px rgba(0,0,0,.35);overflow:hidden;display:flex;flex-direction:column}
+.tb{height:38px;display:flex;align-items:center;padding:0 14px;gap:8px;border-bottom:1px solid var(--hair)}
+.dot{width:12px;height:12px;border-radius:50%;background:#ff5f57}.dot:nth-child(2){background:#febc2e}.dot:nth-child(3){background:#28c840}
+.tb .t{margin-left:12px;font-weight:600;color:var(--mu);font-size:12px}
+.body{display:flex;flex:1;min-height:0}
+.side{width:210px;background:var(--side);border-right:1px solid var(--hair);padding:12px 8px;display:flex;flex-direction:column;gap:2px}
+.side .lbl{font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--mu);padding:12px 10px 4px}
+.si{display:flex;align-items:center;gap:9px;padding:6px 10px;border-radius:7px;color:var(--tx)}
+.si.on{background:var(--soft);color:var(--ac);font-weight:600}
+.si .n{margin-left:auto;font-size:11px;color:var(--mu);font-variant-numeric:tabular-nums}.si.on .n{color:var(--ac)}
+.si i{width:16px;text-align:center;font-style:normal;opacity:.9}
+.sw{width:9px;height:9px;border-radius:3px;display:inline-block}
+.foot{margin-top:auto;font-size:11px;color:var(--mu);padding:8px 10px}
+.pane{flex:1;display:flex;flex-direction:column;min-width:0}
+.ph{padding:16px 22px 10px;display:flex;align-items:baseline;gap:10px}.ph b{font-size:20px;letter-spacing:-.02em}.ph span{color:var(--mu)}
+.ph .sp{margin-left:auto;display:flex;gap:8px}
+.pill{border:1px solid var(--hair);border-radius:999px;padding:3px 11px;font-size:12px;color:var(--mu)}.pill.on{background:var(--ac);color:var(--onac);border-color:var(--ac);font-weight:600}
+.list{padding:4px 14px 14px;display:flex;flex-direction:column;gap:10px;overflow:hidden}
+.stack{background:var(--card);border:1px solid var(--hair);border-radius:11px;position:relative}
+.stack.deep::after{content:"";position:absolute;left:10px;right:10px;bottom:-5px;height:8px;border:1px solid var(--hair);border-top:0;border-radius:0 0 10px 10px;background:var(--card);z-index:-1}
+.sh{display:flex;align-items:center;gap:8px;padding:9px 14px;border-bottom:1px solid var(--hair)}
+.sh b{font-size:13px}.sh .c{color:var(--mu);font-size:11.5px}.sh .why{margin-left:auto;font-size:11px;color:var(--mu)}
+.star{color:var(--ac)}
+.msg{display:flex;gap:10px;padding:8px 14px;align-items:baseline}
+.msg+.msg{border-top:1px solid var(--hair)}
+.msg .pr{width:26px;font:600 11px var(--mono);text-align:right;flex:none}
+.p-hi{color:var(--dng)}.p-md{color:var(--warn)}.p-lo{color:var(--mu)}
+.msg .from{width:120px;font-weight:600;flex:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.msg .tx{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.msg .tx em{font-style:normal;color:var(--mu)}
+.msg .tm{color:var(--mu);font-size:11.5px;flex:none}
+.acct{font-size:10.5px;padding:1px 6px;border-radius:5px;background:var(--soft);color:var(--ac);flex:none}
+.msg.read .from,.msg.read .tx{font-weight:400;color:var(--mu)}
+.muted-row{display:flex;gap:10px;padding:7px 14px;color:var(--mu);font-size:12px;align-items:center}
+.agent{margin:0 14px 14px;border:1px solid var(--hair);border-radius:11px;padding:9px 12px;display:flex;gap:10px;align-items:center;color:var(--mu);background:var(--card)}
+.agent b{color:var(--ac);font-weight:600}.agent .k{margin-left:auto;font:11px var(--mono)}
+/* popover */
+.menubar{height:26px;background:rgba(255,255,255,.55);backdrop-filter:blur(20px);display:flex;align-items:center;padding:0 12px;gap:16px;font-size:12.5px;border-radius:8px 8px 0 0;width:380px;margin-left:auto}
+.menubar .g{width:16px;height:16px;background:#222;-webkit-mask:url(data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA0NCA0NCI+PGcgZmlsbD0ibm9uZSIgc3Ryb2tlPSJibGFjayIgc3Ryb2tlLXdpZHRoPSI0IiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiPjxwYXRoIGQ9Ik0xOCAzMCBDMTQgMjIgOCAxOSA1IDEyIE0xMCAxOSBDNyAxOCA0IDE5IDMgMjEgTTIyIDM4IEwxOCAzMCBNMjYgMzAgQzMwIDIyIDM2IDE5IDM5IDEyIE0zNCAxOSBDMzcgMTggNDAgMTkgNDEgMjEiLz48cGF0aCBkPSJNMTYgMzEgTDI4IDMxIEwyNSAzOCBRMjIgNDAgMTkgMzggWiIgZmlsbD0iYmxhY2siIHN0cm9rZS13aWR0aD0iMiIvPjwvZz48L3N2Zz4K) center/contain no-repeat;mask:url(data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA0NCA0NCI+PGcgZmlsbD0ibm9uZSIgc3Ryb2tlPSJibGFjayIgc3Ryb2tlLXdpZHRoPSI0IiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiPjxwYXRoIGQ9Ik0xOCAzMCBDMTQgMjIgOCAxOSA1IDEyIE0xMCAxOSBDNyAxOCA0IDE5IDMgMjEgTTIyIDM4IEwxOCAzMCBNMjYgMzAgQzMwIDIyIDM2IDE5IDM5IDEyIE0zNCAxOSBDMzcgMTggNDAgMTkgNDEgMjEiLz48cGF0aCBkPSJNMTYgMzEgTDI4IDMxIEwyNSAzOCBRMjIgNDAgMTkgMzggWiIgZmlsbD0iYmxhY2siIHN0cm9rZS13aWR0aD0iMiIvPjwvZz48L3N2Zz4K) center/contain no-repeat;margin-left:auto}
+.pop{width:360px;margin-left:auto;margin-right:10px;position:relative;margin-top:8px;border-radius:12px;background:var(--bg);color:var(--tx);box-shadow:0 0 0 .5px rgba(0,0,0,.3),0 18px 44px rgba(0,0,0,.3)}
+.pop::before{content:"";position:absolute;top:-6px;right:20px;width:12px;height:12px;background:var(--bg);transform:rotate(45deg)}
+.pop .hd{display:flex;padding:12px 14px 6px;align-items:baseline}.pop .hd b{font-size:14px}.pop .hd span{margin-left:auto;color:var(--mu);font-size:11.5px}
+.pop .msg{padding:7px 14px}.pop .msg .from{width:90px}
+.pop .ft{display:flex;gap:6px;padding:10px 14px;border-top:1px solid var(--hair);color:var(--mu);font-size:12px}
+.pop .ft span:last-child{margin-left:auto}
+/* setup */
+.setup{padding:30px 36px;display:flex;flex-direction:column;gap:14px;flex:1}
+.setup h3{font-size:22px;letter-spacing:-.02em}
+.chk{display:flex;gap:12px;padding:11px 14px;border:1px solid var(--hair);border-radius:10px;background:var(--card);align-items:center}
+.chk .ic{width:22px;height:22px;border-radius:50%;display:grid;place-items:center;font-size:12px;font-weight:700;flex:none}
+.ok .ic{background:var(--ok);color:#fff}.run .ic{border:2px solid var(--ac);border-top-color:transparent}.todo .ic{border:2px solid var(--hair)}
+.chk small{display:block;color:var(--mu)}
+.btn{background:var(--ac);color:var(--onac);border-radius:999px;padding:8px 18px;font-weight:600;align-self:flex-start}
+.log{font:11px var(--mono);color:var(--mu);background:var(--side);border-radius:9px;padding:10px 12px;line-height:1.6}
+.rule{display:flex;gap:10px;align-items:center;padding:10px 14px;border:1px solid var(--hair);border-radius:10px;background:var(--card);margin:0 14px 8px}
+.rule code{font:12px var(--mono);color:var(--ac)}.rule .r{margin-left:auto;color:var(--mu);font-size:11.5px}
+.tag{font-size:11px;border:1px solid var(--hair);border-radius:6px;padding:1px 7px;color:var(--mu)}
+.note{max-width:1000px;color:#4a463f;line-height:1.6}
+.note li{margin-left:18px}
+.iconrow{display:flex;gap:28px;align-items:center}.iconrow img{border-radius:0}
+.bar{display:inline-block;width:18px;height:18px;background:#222;-webkit-mask:url(data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA0NCA0NCI+PGcgZmlsbD0ibm9uZSIgc3Ryb2tlPSJibGFjayIgc3Ryb2tlLXdpZHRoPSI0IiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiPjxwYXRoIGQ9Ik0xOCAzMCBDMTQgMjIgOCAxOSA1IDEyIE0xMCAxOSBDNyAxOCA0IDE5IDMgMjEgTTIyIDM4IEwxOCAzMCBNMjYgMzAgQzMwIDIyIDM2IDE5IDM5IDEyIE0zNCAxOSBDMzcgMTggNDAgMTkgNDEgMjEiLz48cGF0aCBkPSJNMTYgMzEgTDI4IDMxIEwyNSAzOCBRMjIgNDAgMTkgMzggWiIgZmlsbD0iYmxhY2siIHN0cm9rZS13aWR0aD0iMiIvPjwvZz48L3N2Zz4K) center/contain no-repeat}
+</style></head><body>
+<h1>moose — mockup v1</h1>
+<div class="sub">Text-only · stacked · priority-ranked · multi-account Gmail · MCP-first. Static mockup, not the build.</div>
+
+<h2>1 · Main window — Priority view (dark)</h2>
+<div class="win dark" style="width:1040px;height:640px">
+ <div class="tb"><div class="dot"></div><div class="dot"></div><div class="dot"></div><span class="t">moose</span></div>
+ <div class="body">
+  <div class="side">
+   <div class="lbl">Stacks</div>
+   <div class="si on"><i>▲</i>Priority<span class="n">7</span></div>
+   <div class="si"><i>★</i>Favourites<span class="n">12</span></div>
+   <div class="si"><i>⇢</i>Everything else<span class="n">48</span></div>
+   <div class="si"><i>⌁</i>Muted<span class="n">131</span></div>
+   <div class="lbl">Accounts</div>
+   <div class="si"><span class="sw" style="background:#f0b26b"></span>&nbsp;me@gmail.com<span class="n">31</span></div>
+   <div class="si"><span class="sw" style="background:#7fc29b"></span>&nbsp;work@acme.com<span class="n">22</span></div>
+   <div class="si"><span class="sw" style="background:#8fa8e8"></span>&nbsp;studio@me.dev<span class="n">14</span></div>
+   <div class="lbl">Brain</div>
+   <div class="si"><i>⇄</i>Routing</div>
+   <div class="si"><i>⊘</i>Muting</div>
+   <div class="si"><i>◎</i>Agents</div>
+   <div class="si"><i>⚙</i>Settings</div>
+   <div class="foot">moose 0.1 · 14 MB</div>
+  </div>
+  <div class="pane">
+   <div class="ph"><b>Priority</b><span>7 stacks need you · 3 accounts</span><div class="sp"><span class="pill on">Unread</span><span class="pill">All</span><span class="pill">⌘K</span></div></div>
+   <div class="list">
+    <div class="stack deep"><div class="sh"><span class="star">★</span><b>Maya Chen</b><span class="c">3 messages · work@acme.com</span><span class="why">vip · asked you a question · deadline Fri</span></div>
+      <div class="msg"><span class="pr p-hi">96</span><span class="from">Maya Chen</span><span class="tx">Contract redlines — can you sign off by Friday? <em>I've addressed Legal's note on §4…</em></span><span class="tm">9:41</span></div>
+      <div class="msg"><span class="pr p-hi">88</span><span class="from">Maya Chen</span><span class="tx">Re: Q4 budget <em>Numbers attached, only the headcount line is open…</em></span><span class="tm">8:12</span></div>
+      <div class="msg read"><span class="pr p-lo">40</span><span class="from">Maya Chen</span><span class="tx">Lunch Thursday? <em>Same place?</em></span><span class="tm">Tue</span></div></div>
+    <div class="stack"><div class="sh"><b>Stripe</b><span class="c">2 messages · studio@me.dev</span><span class="why">payment failed · money</span></div>
+      <div class="msg"><span class="pr p-hi">91</span><span class="from">Stripe</span><span class="tx">Payment of $240.00 failed <em>Update your card to avoid interruption…</em></span><span class="tm">7:30</span></div>
+      <div class="msg"><span class="pr p-md">62</span><span class="from">Stripe</span><span class="tx">Your weekly summary <em>Gross volume up 8%…</em></span><span class="tm">Mon</span></div></div>
+    <div class="stack"><div class="sh"><span class="star">★</span><b>Mum</b><span class="c">1 message · me@gmail.com</span><span class="why">favourite · family</span></div>
+      <div class="msg"><span class="pr p-hi">84</span><span class="from">Mum</span><span class="tx">Sunday? <em>Are you coming for dinner, I need to know how much to…</em></span><span class="tm">Yesterday</span></div></div>
+    <div class="stack"><div class="sh"><b>Ahmad R.</b><span class="c">2 messages · me@gmail.com</span><span class="why">replying to your thread</span></div>
+      <div class="msg"><span class="pr p-md">71</span><span class="from">Ahmad R.</span><span class="tx">Re: flat viewing <em>Works for me, 6pm. Bring the deposit form…</em></span><span class="tm">Yesterday</span></div></div>
+    <div class="muted-row">⌁ 131 muted today · 23 newsletters · 61 notifications · 47 promos &nbsp;<span class="tag">review</span></div>
+   </div>
+   <div class="agent"><b>Claude</b> reordered 2 stacks and muted “Substack Digest” · <span>undo</span><span class="k">via MCP · moose.triage</span></div>
+  </div>
+ </div>
+</div>
+
+<h2>2 · Menu bar popover (light)</h2>
+<div style="width:560px;margin:0 0 0 0">
+ <div class="menubar"><span>Wi-Fi</span><span>100%</span><span>Fri 9:44</span><span class="g"></span></div>
+ <div class="pop light">
+  <div class="hd"><b>Priority</b><span>7 stacks · 3 accounts</span></div>
+  <div class="msg"><span class="pr p-hi">96</span><span class="from">Maya Chen</span><span class="tx">Contract redlines — sign off by Friday?</span><span class="tm">9:41</span></div>
+  <div class="msg"><span class="pr p-hi">91</span><span class="from">Stripe</span><span class="tx">Payment of $240.00 failed</span><span class="tm">7:30</span></div>
+  <div class="msg"><span class="pr p-hi">84</span><span class="from">Mum</span><span class="tx">Sunday? Are you coming for dinner</span><span class="tm">Yest</span></div>
+  <div class="msg"><span class="pr p-md">71</span><span class="from">Ahmad R.</span><span class="tx">Re: flat viewing — 6pm works</span><span class="tm">Yest</span></div>
+  <div class="ft"><span>Open moose</span><span>⌁ 131 muted</span><span>Quit</span></div>
+ </div>
+</div>
+
+<h2>3 · Routing &amp; muting (light)</h2>
+<div class="win light" style="width:1040px;height:470px">
+ <div class="tb"><div class="dot"></div><div class="dot"></div><div class="dot"></div><span class="t">moose — Routing</span></div>
+ <div class="body">
+  <div class="side">
+   <div class="lbl">Stacks</div><div class="si"><i>▲</i>Priority</div><div class="si"><i>★</i>Favourites</div><div class="si"><i>⌁</i>Muted</div>
+   <div class="lbl">Brain</div><div class="si on"><i>⇄</i>Routing</div><div class="si"><i>⊘</i>Muting</div><div class="si"><i>◎</i>Agents</div><div class="si"><i>⚙</i>Settings</div>
+  </div>
+  <div class="pane">
+   <div class="ph"><b>Routing</b><span>Plain-language rules. Moose learns the rest.</span></div>
+   <div style="padding-top:6px">
+    <div class="rule"><span>★</span><code>from Maya, Mum, Ahmad</code><span>→ always Priority</span><span class="r">favourites · 3</span></div>
+    <div class="rule"><span>⇄</span><code>anything about invoices or payments</code><span>→ work@acme.com stack, boost +25</span><span class="r">learned · 14 hits</span></div>
+    <div class="rule"><span>⊘</span><code>newsletters, receipts, “no-reply”</code><span>→ mute, digest at 6pm</span><span class="r">muting · 131 today</span></div>
+    <div class="rule"><span>◎</span><code>“Tell me if a recruiter writes”</code><span>→ agent rule via MCP</span><span class="r">added by Claude</span></div>
+    <div class="rule" style="border-style:dashed;color:var(--mu)">+ Describe a rule in plain English… <span class="r">⌘N</span></div>
+   </div>
+  </div>
+ </div>
+</div>
+
+<h2>4 · First run — automated setup (dark)</h2>
+<div class="win dark" style="width:640px;height:520px">
+ <div class="tb"><div class="dot"></div><div class="dot"></div><div class="dot"></div><span class="t">Welcome to moose</span></div>
+ <div class="setup">
+  <h3>Setting up moose</h3><div style="color:var(--mu)">One button. Moose does the rest.</div>
+  <div class="chk ok"><div class="ic">✓</div><div>Launch at login<small>Enabled</small></div></div>
+  <div class="chk ok"><div class="ic">✓</div><div>Google sign-in (browser, one click per account)<small>me@gmail.com · work@acme.com · studio@me.dev</small></div></div>
+  <div class="chk run"><div class="ic"></div><div>Learning your inbox (last 30 days, on-device)<small>Reading headers only · 1,204 / 3,900</small></div></div>
+  <div class="chk todo"><div class="ic"></div><div>Connect your agents (Claude Code, Claude Desktop, Cursor…)<small>moose-mcp is built in; one click each</small></div></div>
+  <div class="btn">Set everything up</div>
+  <div class="log">✓ token stored in Keychain · ✓ history sync started · … scoring senders</div>
+ </div>
+</div>
+
+
+<h2>4b · Connect Google — your own client, automated as far as Google allows (dark)</h2>
+<div class="row">
+<div class="win dark" style="width:640px;height:560px">
+ <div class="tb"><div class="dot"></div><div class="dot"></div><div class="dot"></div><span class="t">Connect Google</span></div>
+ <div class="setup">
+  <h3>Your Google, your keys</h3><div style="color:var(--mu)">moose is open source, so it uses a Google client that you own. Nothing passes through anyone else.</div>
+  <div class="chk ok"><div class="ic">✓</div><div>Google Cloud project “moose-mail” created<small>via gcloud (installed for you) · Gmail API enabled</small></div></div>
+  <div class="chk run"><div class="ic"></div><div>Create the Desktop OAuth client<small>Google has no API for this one step. Moose opened the exact page. Click “Create”, then “Download JSON”.</small></div></div>
+  <div class="chk todo"><div class="ic"></div><div>Publish the app (stops sign-ins expiring every 7 days)<small>Opens the consent page; click “Publish app”. Personal use needs no review.</small></div></div>
+  <div class="log">watching ~/Downloads for client_secret_*.json … <br>found → imported into Keychain → file moved to Trash</div>
+  <div class="btn">Open the Google page again</div>
+ </div>
+</div>
+<div class="win dark" style="width:640px;height:560px">
+ <div class="tb"><div class="dot"></div><div class="dot"></div><div class="dot"></div><span class="t">Settings — Agents</span></div>
+ <div class="setup">
+  <h3>Agents</h3><div style="color:var(--mu)">Settings save automatically.</div>
+  <div class="chk ok"><div class="ic">✓</div><div>Claude Code<small>Connected · moose-mcp</small></div></div>
+  <div class="chk ok"><div class="ic">✓</div><div>Claude Desktop<small>Connected · restart needed</small></div></div>
+  <div class="chk todo"><div class="ic"></div><div>Cursor<small>Detected · Connect</small></div></div>
+  <div class="chk"><div><b>Agent access</b><small>Read only: agents can look and organise.</small></div><div style="margin-left:auto;display:flex;gap:6px"><span class="pill">Read only</span><span class="pill on">Draft &amp; ask</span><span class="pill">Full access</span></div></div>
+  <div style="color:var(--mu);font-size:12px">Draft &amp; ask (default): agents write drafts, and you approve every send in a native dialog. Full access: agents may send without asking, and every send is logged and has an undo window of 30 s.</div>
+ </div>
+</div>
+</div>
+
+<h2>4c · Reply with Claude (light)</h2>
+<div class="win light" style="width:1040px;height:520px">
+ <div class="tb"><div class="dot"></div><div class="dot"></div><div class="dot"></div><span class="t">moose — Maya Chen</span></div>
+ <div class="body"><div class="pane">
+  <div class="ph"><b>Contract redlines — can you sign off by Friday?</b><span>work@acme.com · 9:41</span></div>
+  <div class="list"><div class="stack"><div class="msg" style="display:block;line-height:1.6;color:var(--tx)">Hi, I've addressed Legal's note on §4 and the termination clause is now 30 days. Can you sign off by Friday so we can send it over? Happy to hop on a call if easier.<br>Maya</div></div>
+   <div class="stack" style="border-color:var(--ac)"><div class="sh"><b style="color:var(--ac)">Claude draft</b><span class="c">from work@acme.com · your tone, learned from 40 sent mails</span><span class="why">⌘↩ send · ⌘E edit · ⌘R regenerate</span></div>
+    <div class="msg" style="display:block;line-height:1.6;color:var(--tx)">Hi Maya, thanks. 30 days works for me. I'll sign off Thursday. No call needed.<br>Best, M.</div>
+    <div class="msg"><span class="tag">shorter</span><span class="tag">warmer</span><span class="tag">decline</span><span class="tag">ask for a call</span><span class="tm" style="margin-left:auto">Runs through your Claude (Claude Code CLI) · no API key in moose</span></div></div></div>
+ </div></div>
+</div>
+
+<h2>5 · Icon &amp; menu bar glyph</h2>
+<div class="iconrow">
+ <img src="icon.svg" width="192" height="192"><img src="icon.svg" width="96" height="96"><img src="icon.svg" width="48" height="48">
+ <div style="background:#f3f0ea;padding:10px 16px;border-radius:8px;display:flex;gap:16px;align-items:center"><span class="bar"></span><span style="color:#6b665d">menu bar glyph (template)</span></div>
+</div>
+
+<h2>What I'll build (and decisions for you)</h2>
+<div class="note"><ul>
+<li><b>Stack</b>: pure Swift/SwiftUI+AppKit, zero dependencies, menu bar + Dock, ~15 MB, nothing polling while hidden. Gmail REST API over URLSession; tokens in Keychain; messages cached as text only (HTML stripped, no images ever loaded → no tracking pixels).</li>
+<li><b>Stacks</b>: grouped by sender/thread, ranked by priority score (0–100) with a one-line “why”.</li>
+<li><b>Priority</b>: on-device scoring (favourites, who you reply to, questions, deadlines, money, recency). Optional LLM boost through your own agent over MCP, so no API keys inside moose.</li>
+<li><b>Claude replies</b>: “Reply with Claude” drafts through your installed Claude Code CLI (headless) or any connected agent, using your sent mail for tone. Optional: your own Anthropic API key in the Keychain. Moose never ships keys.</li><li><b>MCP-first</b>: <code>moose-mcp</code> in the bundle: list_stacks, read, triage, mute, route, favourite, draft/send (send needs native approval). Every UI action is also a tool.</li>
+</ul></div>
+</body></html>

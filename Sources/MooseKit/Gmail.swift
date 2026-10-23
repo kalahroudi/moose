@@ -1,0 +1,149 @@
+// SPDX-License-Identifier: Apache-2.0
+
+import Foundation
+
+public enum GmailError: Error { case notSignedIn(String), http(Int, String), decode }
+
+/// Thin Gmail REST client for one account. Text only: it asks for metadata and plain-text parts, never attachments or images.
+public actor GmailClient {
+    public let account: String
+    private let client: GoogleClient
+    private var token: TokenSet?
+    private let base = "https://gmail.googleapis.com/gmail/v1/users/me"
+
+    public init(account: String, client: GoogleClient) { self.account = account; self.client = client }
+
+    public static func storeRefreshToken(_ t: String, for account: String) throws { try Keychain.set(t, for: "refresh-\(account)") }
+    public static func removeAccount(_ account: String) { Keychain.remove("refresh-\(account)") }
+
+    // MARK: Plumbing
+
+    private func accessToken() async throws -> String {
+        if let t = token, t.expires > Date() { return t.access }
+        guard let r = Keychain.get("refresh-\(account)") else { throw GmailError.notSignedIn(account) }
+        let t = try await GoogleAuth.refresh(client: client, refreshToken: r)
+        token = t
+        return t.access
+    }
+
+    private func request(_ path: String, method: String = "GET", query: [URLQueryItem] = [], body: [String: Any]? = nil) async throws -> [String: Any] {
+        var c = URLComponents(string: base + path)!
+        if !query.isEmpty { c.queryItems = query }
+        var req = URLRequest(url: c.url!)
+        req.httpMethod = method
+        req.timeoutInterval = 30
+        req.setValue("Bearer \(try await accessToken())", forHTTPHeaderField: "Authorization")
+        if let body { req.httpBody = try JSONSerialization.data(withJSONObject: body); req.setValue("application/json", forHTTPHeaderField: "Content-Type") }
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
+        guard (200..<300).contains(code) else { throw GmailError.http(code, String(decoding: data.prefix(300), as: UTF8.self)) }
+        if data.isEmpty { return [:] }
+        return (try JSONSerialization.jsonObject(with: data) as? [String: Any]) ?? [:]
+    }
+
+    // MARK: Reading
+
+    public func profileEmail() async throws -> String {
+        guard let e = try await request("/profile")["emailAddress"] as? String else { throw GmailError.decode }
+        return e.lowercased()
+    }
+
+    /// Recent inbox messages as light metadata + Gmail's own text snippet.
+    public func recentInbox(days: Int = 30, limit: Int = 150) async throws -> [MailMessage] {
+        let ids = try await listIDs(query: "in:inbox newer_than:\(days)d", limit: limit)
+        return try await metadata(ids)
+    }
+
+    /// Addresses the user has written to recently: the strongest "this person matters" signal.
+    public func recentRecipients(days: Int = 90, limit: Int = 150) async throws -> Set<String> {
+        let ids = try await listIDs(query: "in:sent newer_than:\(days)d", limit: limit)
+        var out = Set<String>()
+        await withTaskGroup(of: [String].self) { group in
+            var it = ids.makeIterator(); var running = 0
+            func next() { if let id = it.next() { running += 1; group.addTask { [self] in await self.recipients(of: id) } } }
+            for _ in 0..<6 { next() }
+            while let r = await group.next() { running -= 1; out.formUnion(r); next() }
+        }
+        return out
+    }
+
+    private func recipients(of id: String) async -> [String] {
+        guard let m = try? await request("/messages/\(id)", query: [.init(name: "format", value: "metadata"), .init(name: "metadataHeaders", value: "To"), .init(name: "metadataHeaders", value: "Cc")]),
+              let headers = (m["payload"] as? [String: Any])?["headers"] as? [[String: Any]] else { return [] }
+        return headers.compactMap { $0["value"] as? String }.flatMap { $0.split(separator: ",").map { MailText.parseAddress(String($0)).email } }
+    }
+
+    func listIDs(query: String, limit: Int) async throws -> [String] {
+        let r = try await request("/messages", query: [.init(name: "q", value: query), .init(name: "maxResults", value: String(min(limit, 500)))])
+        return ((r["messages"] as? [[String: Any]]) ?? []).compactMap { $0["id"] as? String }
+    }
+
+    func metadata(_ ids: [String]) async throws -> [MailMessage] {
+        var out: [MailMessage] = []
+        try await withThrowingTaskGroup(of: MailMessage?.self) { group in
+            var it = ids.makeIterator()
+            func next() { if let id = it.next() { group.addTask { [self] in try await self.fetchMetadata(id) } } }
+            for _ in 0..<8 { next() }
+            while let m = try await group.next() { if let m { out.append(m) }; next() }
+        }
+        return out.sorted { $0.date > $1.date }
+    }
+
+    func fetchMetadata(_ id: String) async throws -> MailMessage? {
+        let headers = ["From", "Subject", "List-Unsubscribe", "Precedence", "Message-ID", "References"]
+        let r = try await request("/messages/\(id)", query: [.init(name: "format", value: "metadata")] + headers.map { .init(name: "metadataHeaders", value: $0) })
+        return Self.message(from: r, account: account)
+    }
+
+    public static func message(from r: [String: Any], account: String) -> MailMessage? {
+        guard let id = r["id"] as? String, let tid = r["threadId"] as? String else { return nil }
+        let hs = ((r["payload"] as? [String: Any])?["headers"] as? [[String: Any]]) ?? []
+        func h(_ n: String) -> String? { hs.first { ($0["name"] as? String)?.lowercased() == n.lowercased() }?["value"] as? String }
+        let from = MailText.parseAddress(h("From") ?? "")
+        let ms = Double(r["internalDate"] as? String ?? "") ?? Date().timeIntervalSince1970 * 1000
+        let labels = (r["labelIds"] as? [String]) ?? []
+        let snippet = ((r["snippet"] as? String) ?? "").replacingOccurrences(of: "&#39;", with: "'").replacingOccurrences(of: "&quot;", with: "\"").replacingOccurrences(of: "&amp;", with: "&")
+        return MailMessage(id: id, threadId: tid, account: account, fromName: from.name, fromEmail: from.email, subject: h("Subject") ?? "(no subject)",
+                           snippet: snippet, date: Date(timeIntervalSince1970: ms / 1000), unread: labels.contains("UNREAD"), labels: labels,
+                           bulkHeader: h("List-Unsubscribe") != nil || (h("Precedence")?.lowercased() == "bulk"),
+                           messageIDHeader: h("Message-ID"), referencesHeader: h("References"))
+    }
+
+    /// The full text of one message (quoted replies trimmed).
+    public func fullText(_ id: String) async throws -> String {
+        let r = try await request("/messages/\(id)", query: [.init(name: "format", value: "full")])
+        return MailText.body(from: (r["payload"] as? [String: Any]) ?? [:])
+    }
+
+    /// A few of the user's own recent sent messages, so drafts can match their voice.
+    public func sentSamples(count: Int = 4) async -> [String] {
+        guard let ids = try? await listIDs(query: "in:sent newer_than:60d", limit: count * 2) else { return [] }
+        var out: [String] = []
+        for id in ids {
+            if let t = try? await fullText(id), t.count > 20 { out.append(t) }
+            if out.count >= count { break }
+        }
+        return out
+    }
+
+    // MARK: Organising
+
+    public func modify(_ id: String, add: [String] = [], remove: [String] = []) async throws {
+        _ = try await request("/messages/\(id)/modify", method: "POST", body: ["addLabelIds": add, "removeLabelIds": remove])
+    }
+    public func markRead(_ id: String) async throws { try await modify(id, remove: ["UNREAD"]) }
+    public func archive(_ id: String) async throws { try await modify(id, remove: ["INBOX"]) }
+
+    // MARK: Writing
+
+    public func createDraft(to: String, subject: String, body: String, threadId: String?, inReplyTo: String?, references: String?) async throws -> String {
+        var msg: [String: Any] = ["raw": MailText.rawMessage(from: account, to: to, subject: subject, body: body, inReplyTo: inReplyTo, references: references)]
+        if let t = threadId { msg["threadId"] = t }
+        let r = try await request("/drafts", method: "POST", body: ["message": msg])
+        guard let id = r["id"] as? String else { throw GmailError.decode }
+        return id
+    }
+
+    public func sendDraft(_ draftID: String) async throws { _ = try await request("/drafts/send", method: "POST", body: ["id": draftID]) }
+    public func deleteDraft(_ draftID: String) async throws { _ = try await request("/drafts/\(draftID)", method: "DELETE") }
+}
