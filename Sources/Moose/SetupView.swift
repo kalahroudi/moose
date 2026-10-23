@@ -35,7 +35,7 @@ struct SetupView: View {
             if mail.client == nil { clientGuide } else if !mail.hasAccount {
                 Button { mail.addAccount() } label: { HStack(spacing: 6) { if mail.signingIn { ProgressView().controlSize(.small) }; Text(mail.signingIn ? "Waiting for Google…" : "Sign in with Google") } }
                     .buttonStyle(Pill(kind: .primary)).disabled(mail.signingIn)
-                if mail.signingIn { Button("Cancel") { mail.cancelSignIn() }.buttonStyle(Pill(kind: .primary)) }
+                if mail.signingIn { Button("Cancel") { mail.cancelSignIn() }.buttonStyle(Pill()) }
             }
             if !hasClaude, Shell.find("brew") != nil {
                 HStack(spacing: 8) {
@@ -44,7 +44,7 @@ struct SetupView: View {
                     Text("brew install --cask claude-code").font(.system(size: 11, design: .monospaced)).foregroundStyle(.secondary)
                 }
             }
-            Button("I did it, check again") { Task { await model.refresh(); await mail.sync() } }.buttonStyle(Pill())
+            Button("I did it, check again") { Task { await model.refresh(); await mail.sync() } }.buttonStyle(.plain).font(.system(size: 12.5)).foregroundStyle(.secondary).underline()
         }.frame(maxWidth: 560, alignment: .leading)
         .onAppear { if mail.client == nil { startWatching() } }
     }

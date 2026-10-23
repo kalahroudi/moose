@@ -122,6 +122,11 @@ final class MailModel {
                 await sync()
             } catch GoogleAuthError.cancelled {
                 AppModel.shared.show("Sign-in cancelled")
+            } catch GmailError.http(403, let body) where body.contains("has not been used") || body.contains("SERVICE_DISABLED") {
+                AppLog.error(GmailError.http(403, body), context: "add account")
+                let project = client.clientID.split(separator: "-").first.map(String.init) ?? ""
+                if let url = URL(string: "https://console.developers.google.com/apis/api/gmail.googleapis.com/overview?project=\(project)") { NSWorkspace.shared.open(url) }
+                AppModel.shared.show("Signed in, but the Gmail API isn't enabled in your Google project. Click Enable on the page that just opened, wait a minute, then sign in again.", error: true)
             } catch {
                 AppLog.error(error, context: "add account")
                 AppModel.shared.show(error is GoogleAuthError ? "Google sign-in didn't finish. Try again and approve access in the browser." : UserError.message(for: error, action: "Connect your account"), error: true)
