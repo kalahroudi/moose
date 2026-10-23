@@ -4,16 +4,17 @@ import Foundation
 
 /// A mass or single action in the Stack window. Every one has an exact inverse, which is what makes "Undo" instead of "Are you sure?" safe.
 public enum StackAction: String, Codable, Sendable {
-    case archive, markRead, trash, file
+    case archive, markRead, trash, file, unfile
 
     public func verb(past: Bool = true) -> String {
-        switch self { case .archive: "Archived"; case .markRead: "Marked read"; case .trash: "Deleted"; case .file: "Filed" }
+        switch self { case .archive: "Archived"; case .markRead: "Marked read"; case .trash: "Deleted"; case .file: "Filed"; case .unfile: "Moved to inbox" }
     }
 
     /// "Archived 2 from Stripe", "Deleted 7", "Marked read 1".
     public func summary(count: Int, sender: String?) -> String {
         var s = "\(verb()) \(count)"
         if self == .markRead { s = count == 1 ? "Marked 1 read" : "Marked \(count) read" }
+        if self == .unfile { s = "Moved \(count) to inbox" }
         if let sender, !sender.isEmpty { s += " from \(sender)" }
         return s
     }
@@ -45,4 +46,10 @@ public enum Deck {
 
     /// Splits ids by account, because Gmail calls are per account.
     public static func group(_ messages: [MailMessage]) -> [String: [MailMessage]] { Dictionary(grouping: messages, by: \.account) }
+}
+
+/// Where a message lives: the inbox, or a folder (a Gmail label that a filing rule moves mail into).
+public enum MailContainer: Hashable, Sendable {
+    case inbox
+    case folder(String)
 }

@@ -1,0 +1,246 @@
+<!doctype html><html><head><meta charset="utf-8"><title>moose — Folders mockup</title>
+<style>
+:root{--font:-apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif;--mono:ui-monospace,"SF Mono",Menlo,monospace}
+*{box-sizing:border-box;margin:0}
+body{font:13px/1.4 var(--font);background:#d9d4cb;padding:48px;color:#222;-webkit-font-smoothing:antialiased}
+h1{font-size:28px;letter-spacing:-.02em}.sub{color:#6b665d;margin:4px 0 8px;max-width:760px}
+h2{font-size:12px;text-transform:uppercase;letter-spacing:.1em;color:#6b665d;margin:44px 0 6px}
+.note{color:#6b665d;margin-bottom:14px;max-width:760px}
+.dark{--bg:#17201d;--side:#121a17;--card:#1e2926;--hair:#2a3733;--tx:#e8e4da;--mu:#8d9a94;--ac:#f0b26b;--onac:#2a1a05;--soft:rgba(240,178,107,.14);--ok:#7fc29b;--warn:#e6b450;--dng:#e57c6a}
+.light{--bg:#fbf9f5;--side:#f1ede6;--card:#ffffff;--hair:#e4ded3;--tx:#25221d;--mu:#8a8478;--ac:#b8651b;--onac:#fff;--soft:rgba(184,101,27,.10);--ok:#2f8a5b;--warn:#a87410;--dng:#c0452f}
+.win{width:860px;height:540px;background:var(--bg);color:var(--tx);border-radius:12px;box-shadow:0 0 0 .5px rgba(0,0,0,.4),0 24px 60px rgba(0,0,0,.35);overflow:hidden;display:flex;flex-direction:column;position:relative}
+.tb{height:38px;display:flex;align-items:center;padding:0 14px;gap:8px;border-bottom:1px solid var(--hair);flex:none}
+.dot{width:12px;height:12px;border-radius:50%;background:#ff5f57}.dot:nth-child(2){background:#febc2e}.dot:nth-child(3){background:#28c840}
+.tb .t{margin-left:12px;font-weight:600;color:var(--mu);font-size:12px}
+.body{display:flex;flex:1;min-height:0}
+.side{width:210px;flex:none;background:var(--side);border-right:1px solid var(--hair);padding:12px 8px;display:flex;flex-direction:column;gap:2px}
+.side .lbl{font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--mu);padding:12px 10px 4px;display:flex}
+.side .lbl u{margin-left:auto;text-decoration:none;font-size:14px;letter-spacing:0}
+.si{display:flex;align-items:center;gap:9px;padding:6px 10px;border-radius:7px}
+.si.on{background:var(--soft);color:var(--ac);font-weight:600}
+.si .n{margin-left:auto;font-size:11px;color:var(--mu);font-variant-numeric:tabular-nums}.si.on .n{color:var(--ac)}
+.si i{width:16px;text-align:center;font-style:normal;opacity:.9}
+.si.sub{padding-left:35px}
+.new{position:relative}.new::after{content:"NEW";position:absolute;right:-2px;top:-2px;font:700 8px var(--mono);background:var(--ac);color:var(--onac);padding:1px 4px;border-radius:4px}
+.pane{flex:1;display:flex;flex-direction:column;min-width:0}
+.ph{padding:16px 22px 6px;display:flex;align-items:baseline;gap:10px}.ph b{font-size:20px;letter-spacing:-.02em}.ph span{color:var(--mu)}
+.ph .sp{margin-left:auto;display:flex;gap:8px;align-items:center}
+.pill{border:1px solid var(--hair);border-radius:999px;padding:3px 11px;font-size:12px;color:var(--mu);white-space:nowrap}.pill.on{background:var(--ac);color:var(--onac);border-color:var(--ac);font-weight:600}
+.rulebar{margin:2px 22px 8px;border:1px solid var(--hair);border-radius:9px;background:var(--card);padding:7px 12px;display:flex;gap:10px;align-items:center;color:var(--mu);font-size:12px}
+.rulebar b{color:var(--tx);font-weight:600}.rulebar .sp{margin-left:auto;color:var(--ac)}
+.list{padding:4px 14px 14px;display:flex;flex-direction:column;gap:10px;overflow:hidden}
+.stack{background:var(--card);border:1px solid var(--hair);border-radius:11px}
+.sh{display:flex;align-items:center;gap:8px;padding:9px 14px;border-bottom:1px solid var(--hair)}
+.sh b{font-size:13px}.sh .c{color:var(--mu);font-size:11.5px}.sh .why{margin-left:auto;font-size:11px;color:var(--mu)}
+.msg{display:flex;gap:10px;padding:8px 14px;align-items:baseline}
+.msg+.msg{border-top:1px solid var(--hair)}
+.msg .from{width:120px;font-weight:600;flex:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.msg .tx{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.msg .tx em{font-style:normal;color:var(--mu)}
+.msg .tm{color:var(--mu);font-size:11.5px;flex:none}
+.msg.read .from,.msg.read .tx{font-weight:400;color:var(--mu)}
+.acct{font-size:10.5px;padding:1px 6px;border-radius:5px;background:var(--soft);color:var(--ac);flex:none}
+.rc{background:var(--card);border:1px solid var(--hair);border-radius:11px;padding:11px 14px;display:flex;gap:12px;align-items:center;margin:0 22px 10px}
+.rc .ic{width:30px;height:30px;border-radius:8px;background:var(--soft);color:var(--ac);display:grid;place-items:center;flex:none}
+.rc b{display:block;font-size:13px}.rc small{color:var(--mu);font-size:11.5px}
+.rc .go{margin-left:auto;display:flex;gap:10px;align-items:center}
+.link{color:var(--ac);font-weight:600;white-space:nowrap}
+.sw{width:34px;height:20px;border-radius:999px;background:var(--ac);position:relative}.sw::after{content:"";position:absolute;right:2px;top:2px;width:16px;height:16px;border-radius:50%;background:var(--onac)}
+.toast{position:absolute;left:50%;transform:translateX(-50%);bottom:22px;background:var(--tx);color:var(--bg);border-radius:11px;padding:10px 16px;display:flex;gap:16px;align-items:center;box-shadow:0 10px 30px rgba(0,0,0,.3);white-space:nowrap}
+.toast b{color:var(--ac)}.toast kbd{font:11px var(--mono);opacity:.6}
+.input{margin:6px 22px 14px;border:1px solid var(--ac);border-radius:9px;background:var(--card);padding:9px 12px;color:var(--tx)}
+.empty{margin:auto;text-align:center}.empty b{display:block;font-size:20px;letter-spacing:-.02em}.empty span{color:var(--mu)}
+.tag{font-size:10.5px;padding:1px 7px;border-radius:5px;border:1px solid var(--hair);color:var(--mu)}
+
+.sw2{width:640px;height:520px}
+.stage{flex:1;display:flex;flex-direction:column;align-items:center;padding:14px 40px 26px;min-height:0}
+.src{margin-left:12px;display:flex;align-items:center;gap:6px;border:1px solid var(--hair);background:var(--card);border-radius:8px;padding:3px 10px;font-weight:600;font-size:12px}.src span{color:var(--mu);font-weight:400}
+.nav{margin-left:auto;display:flex;align-items:center;gap:14px;color:var(--mu);font-size:13px}.nav b{font-weight:500;font-variant-numeric:tabular-nums}.nav i{font-style:normal;font-size:16px}
+.deck{position:relative;width:100%;flex:1;min-height:0;margin-bottom:22px;display:flex}
+.u{position:absolute;inset:0;border:1px solid var(--hair);background:var(--side);border-radius:14px}.u1{transform:translateY(10px) scale(.965)}.u2{transform:translateY(19px) scale(.93);opacity:.6}
+.card{position:relative;z-index:1;width:100%;background:var(--card);border:1px solid var(--hair);border-radius:14px;box-shadow:0 10px 30px rgba(0,0,0,.14);padding:22px 26px;display:flex;flex-direction:column;overflow:hidden}
+.cf{display:flex;align-items:baseline;gap:8px}.cf b{font-size:16px}.cf span{color:var(--mu);font-size:12.5px}.cf .t{margin-left:auto}
+.cs{font-size:19px;font-weight:700;letter-spacing:-.015em;margin:8px 0 14px}.ctx{font-size:15px;line-height:1.7}
+.fl{display:inline-block;font-size:11px;padding:2px 8px;border-radius:6px;background:var(--soft);color:var(--ac);font-weight:600;margin-left:8px}
+.act{display:flex;gap:10px;justify-content:center}
+.btn{border:1px solid var(--hair);background:var(--card);border-radius:10px;padding:9px 18px;font-weight:600;display:flex;gap:8px;align-items:center;white-space:nowrap}
+.btn.p{background:var(--ac);color:var(--onac);border-color:var(--ac)}.btn.d{color:var(--dng)}.btn.s{font-weight:500;color:var(--mu)}
+.btn kbd{font:11px var(--mono);opacity:.6;font-weight:400}
+.menu{position:absolute;left:96px;top:34px;z-index:9;width:230px;background:var(--card);border:1px solid var(--hair);border-radius:10px;box-shadow:0 14px 40px rgba(0,0,0,.35);padding:5px}
+.menu .si{padding:6px 10px}.menu hr{border:0;border-top:1px solid var(--hair);margin:4px 0}
+
+.more{color:var(--mu);font-size:12px;padding:5px 10px 5px 35px;display:flex;gap:6px;align-items:center}.more b{color:var(--ac);font-weight:600}
+.grip{color:var(--mu);opacity:.55;font-size:11px;letter-spacing:-2px;width:10px}
+.drag{background:var(--card);box-shadow:0 8px 22px rgba(0,0,0,.35);border:1px solid var(--ac);border-radius:7px;transform:translateX(6px) rotate(-1deg)}
+.dropline{height:2px;background:var(--ac);border-radius:2px;margin:1px 8px}
+.cm{position:absolute;z-index:9;width:250px;background:var(--card);border:1px solid var(--hair);border-radius:10px;box-shadow:0 14px 40px rgba(0,0,0,.35);padding:5px;color:var(--tx)}
+.cm .it{display:flex;gap:9px;padding:6px 10px;border-radius:6px;align-items:center}.cm .it.h{background:var(--soft)}.cm .it kbd{margin-left:auto;font:11px var(--mono);color:var(--mu)}
+.cm .it.dg{color:var(--dng)}.cm hr{border:0;border-top:1px solid var(--hair);margin:4px 0}.cm .it small{color:var(--mu)}
+.dlg{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);z-index:10;width:400px;background:var(--card);border:1px solid var(--hair);border-radius:14px;box-shadow:0 24px 60px rgba(0,0,0,.5);padding:20px 22px}
+.dlg h4{font-size:15px;margin-bottom:6px}.dlg p{color:var(--mu);margin-bottom:12px}
+.opt{display:flex;gap:10px;padding:8px 10px;border:1px solid var(--hair);border-radius:9px;margin-bottom:6px;align-items:flex-start}.opt.on{border-color:var(--ac);background:var(--soft)}
+.opt .r{width:14px;height:14px;border-radius:50%;border:2px solid var(--hair);flex:none;margin-top:2px}.opt.on .r{border-color:var(--ac);background:radial-gradient(var(--ac) 40%,transparent 45%)}
+.opt b{display:block}.opt small{color:var(--mu)}
+.dlg .bt{display:flex;gap:8px;justify-content:flex-end;margin-top:12px}
+.bt2{border:1px solid var(--hair);border-radius:9px;padding:6px 14px;font-weight:600}.bt2.dg{background:var(--dng);color:#fff;border-color:var(--dng)}
+.dim{position:absolute;inset:38px 0 0 0;background:rgba(0,0,0,.35);z-index:8}
+.mrow{display:flex;gap:12px;align-items:center;margin:0 22px 8px;padding:9px 12px;background:var(--card);border:1px solid var(--hair);border-radius:10px}
+.mrow .nm{font-weight:600}.mrow small{color:var(--mu)}.mrow .acts{margin-left:auto;display:flex;gap:6px}
+.mrow .ic2{border:1px solid var(--hair);border-radius:7px;padding:2px 8px;color:var(--mu);font-size:12px}
+.mrow.sep{border-style:dashed;background:transparent;color:var(--mu);justify-content:center;font-size:11.5px}
+.badge5{font:700 10px var(--mono);background:var(--ac);color:var(--onac);border-radius:5px;padding:1px 5px}
+.legend{max-width:860px;margin-top:40px;background:#cfc9be;border-radius:10px;padding:16px 20px;color:#3a362f}
+.legend li{margin:4px 0 4px 18px}
+</style></head><body>
+<h1>moose — Folders (routed mail)</h1>
+<div class="sub">Closes the gap: mail that a routing rule files into a Gmail label now has a home inside Moose, instead of vanishing from your stacks.</div>
+
+<h2>1 · Folders in the sidebar, and a folder view</h2>
+<div class="note">Each filing rule's folder gets a sidebar entry under a new <b>Folders</b> section, with an unread count. Opening it shows the mail in the same stack format as Priority, grouped by sender, newest first. Nested labels (<code>Work/Clients</code>) nest in the sidebar.</div>
+<div class="win dark"><div class="tb"><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="t">Moose</div></div>
+ <div class="body">
+  <div class="side">
+   <div class="si"><i>⚡</i>Priority<span class="n">7</span></div>
+   <div class="si"><i>★</i>Favourites<span class="n">3</span></div>
+   <div class="si"><i>▤</i>Everything else<span class="n">41</span></div>
+   <div class="si"><i>🔕</i>Muted<span class="n">112</span></div>
+   <div class="lbl new">Folders <u>＋</u></div>
+   <div class="si on"><i>▸</i>Work/Clients<span class="n">2</span></div>
+   <div class="si"><i>▸</i>Receipts<span class="n">0</span></div>
+   <div class="si"><i>▾</i>Travel<span class="n">1</span></div>
+   <div class="si sub"><i>·</i>Spain 2026<span class="n">1</span></div>
+   <div class="lbl">Rules</div>
+   <div class="si"><i>⑂</i>Routing</div>
+   <div class="si"><i>≡</i>Muting</div>
+   <div class="si"><i>✦</i>Agents</div>
+  </div>
+  <div class="pane">
+   <div class="ph"><b>Work/Clients</b><span>14 emails · 2 unread</span><div class="sp"><span class="pill on">All accounts</span><span class="pill">maya@acme.com</span></div></div>
+   <div class="rulebar">Filed by rule <b>from orbit.example</b><span class="tag">Gmail label</span><span class="sp">Edit rule →</span></div>
+   <div class="list">
+    <div class="stack"><div class="sh"><b>Dana Reyes</b><span class="c">orbit.example · 3 emails</span><span class="why">filed automatically · last 2h ago</span></div>
+     <div class="msg"><span class="from">Dana Reyes</span><span class="tx">Mockups for review <em>— attached are the latest mockups…</em></span><span class="acct">acme</span><span class="tm">9:12</span></div>
+     <div class="msg read"><span class="from">Dana Reyes</span><span class="tx">Re: Scope of work <em>— happy with the revised scope…</em></span><span class="acct">acme</span><span class="tm">Mon</span></div>
+     <div class="msg read"><span class="from">Dana Reyes</span><span class="tx">Kick-off call</span><span class="acct">acme</span><span class="tm">Oct 14</span></div></div>
+    <div class="stack"><div class="sh"><b>Sam Okafor</b><span class="c">sam@harbor.example · 2 emails</span><span class="why">filed automatically · yesterday</span></div>
+     <div class="msg"><span class="from">Sam Okafor</span><span class="tx">Invoice 1043 approved <em>— payment goes out on the 28th…</em></span><span class="acct">acme</span><span class="tm">Tue</span></div>
+     <div class="msg read"><span class="from">Sam Okafor</span><span class="tx">Invoice 1042 paid</span><span class="acct">acme</span><span class="tm">Oct 9</span></div></div>
+   </div>
+  </div>
+ </div>
+</div>
+
+<h2>2 · Routing pane: each rule links to its mail</h2>
+<div class="note">Every filing rule card shows how many emails it has filed and a link to open that folder. The toggle and delete stay as they are today.</div>
+<div class="win light"><div class="tb"><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="t">Moose</div></div>
+ <div class="body">
+  <div class="side">
+   <div class="si"><i>⚡</i>Priority<span class="n">7</span></div>
+   <div class="si"><i>★</i>Favourites<span class="n">3</span></div>
+   <div class="si"><i>▤</i>Everything else<span class="n">41</span></div>
+   <div class="si"><i>🔕</i>Muted<span class="n">112</span></div>
+   <div class="lbl">Folders <u>＋</u></div>
+   <div class="si"><i>▸</i>Work/Clients<span class="n">2</span></div>
+   <div class="si"><i>▸</i>Receipts</div>
+   <div class="si"><i>▾</i>Travel<span class="n">1</span></div>
+   <div class="lbl">Rules</div>
+   <div class="si on"><i>⑂</i>Routing</div>
+   <div class="si"><i>≡</i>Muting</div>
+   <div class="si"><i>✦</i>Agents</div>
+  </div>
+  <div class="pane">
+   <div class="ph"><b>Routing</b><span>Favourite, boost or file mail into a folder.</span></div>
+   <div class="input">move emails from stripe.com to Receipts</div>
+   <div class="rc"><div class="ic">▸</div><div><b>from orbit.example</b><small>file in “Work/Clients” · 14 filed · you</small></div><div class="go"><span class="link">Open folder →</span><div class="sw"></div></div></div>
+   <div class="rc"><div class="ic">▸</div><div><b>from stripe.com</b><small>file in “Receipts” · 38 filed · you</small></div><div class="go"><span class="link">Open folder →</span><div class="sw"></div></div></div>
+   <div class="rc"><div class="ic">★</div><div><b>from maya@acme.com</b><small>always Priority · favourites</small></div><div class="go"><div class="sw"></div></div></div>
+  </div>
+ </div>
+ <div class="toast">Rule added. Filed 6 emails in “Receipts” and the rest will follow. <b>Open folder</b> <kbd>⏎</kbd> &nbsp; <b>Undo</b> <kbd>⌘Z</kbd></div>
+</div>
+
+<h2>3 · Empty folder</h2>
+<div class="win dark" style="height:300px"><div class="tb"><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="t">Moose</div></div>
+ <div class="body">
+  <div class="side"><div class="si"><i>⚡</i>Priority<span class="n">7</span></div><div class="lbl">Folders <u>＋</u></div><div class="si on"><i>▸</i>Receipts</div></div>
+  <div class="pane"><div class="ph"><b>Receipts</b><span>0 emails</span></div>
+   <div class="empty"><b>Nothing filed here yet.</b><span>New mail from stripe.com will land here automatically.</span></div></div>
+ </div>
+</div>
+
+
+<h2>4 · Stack window (⌘T) on a folder</h2>
+<div class="note">The stack window gets a <b>source picker</b> in its title bar: Priority (today's behaviour, the default) or any folder. Same one-card-at-a-time flow, same keys. Opening a folder from the sidebar, the Routing pane or the toast with <b>⌘T</b> lands here directly. A badge on the card shows its folder.</div>
+<div class="row" style="display:flex;gap:28px;flex-wrap:wrap">
+<div class="win sw2 dark" style="width:640px;height:520px"><div class="tb"><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="src">Work/Clients <span>▾</span></div><div class="nav"><i>‹</i><b>1 / 5</b><i>›</i></div></div>
+ <div class="stage"><div class="deck"><div class="u u2"></div><div class="u u1"></div>
+  <div class="card"><div class="cf"><b>Dana Reyes</b><span>dana@orbit.example</span><span class="fl">▸ Work/Clients</span><span class="t">9:12</span></div>
+   <div class="cs">Mockups for review</div>
+   <div class="ctx">Dear parents,<br><br>This Friday is non-uniform day. Attached are the latest mockups. Feedback by Thursday?<br><br>The revised scope is also in the folder.<br><br>Dana Reyes</div></div></div>
+  <div class="act"><div class="btn">Read <kbd>Space</kbd></div><div class="btn p">Reply <kbd>R</kbd></div><div class="btn">To inbox <kbd>I</kbd></div><div class="btn d">Delete <kbd>⌫</kbd></div><div class="btn s">All ▾ <kbd>A</kbd></div></div></div>
+</div>
+<div class="win sw2 light" style="width:640px;height:520px"><div class="tb"><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="src">Work/Clients <span>▾</span></div><div class="nav"><i>‹</i><b>1 / 5</b><i>›</i></div></div>
+ <div class="menu"><div class="si"><i>⚡</i>Priority<span class="n">7</span></div><hr><div class="si on"><i>▸</i>Work/Clients<span class="n">2</span></div><div class="si"><i>▸</i>Receipts</div><div class="si"><i>▾</i>Travel<span class="n">1</span></div></div>
+ <div class="stage" style="opacity:.5"><div class="deck"><div class="u u2"></div><div class="u u1"></div><div class="card"><div class="cf"><b>Dana Reyes</b><span>dana@orbit.example</span></div><div class="cs">Mockups for review</div></div></div></div>
+</div>
+</div>
+<div class="note" style="margin-top:12px">Left: a folder in the stack window. Right: the source picker (also <b>⌘[</b> / <b>⌘]</b> to cycle sources).</div>
+
+<h2>5 · Managing folders</h2>
+<div class="note"><b>Right-click</b> (or the ⋯ that appears on hover) any folder in the sidebar. Actions apply to the Gmail label and the mail in it. Bulk actions show the usual Undo bar and ⌘Z. <b>Delete folder</b> asks first because it also touches the rule.</div>
+<div class="row" style="display:flex;gap:28px;flex-wrap:wrap">
+<div class="win dark" style="width:640px;height:470px"><div class="tb"><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="t">Folder menu</div></div>
+ <div class="body"><div class="side"><div class="si"><i>⚡</i>Priority<span class="n">7</span></div><div class="si"><i>★</i>Favourites<span class="n">3</span></div><div class="si"><i>▤</i>Everything else<span class="n">41</span></div><div class="lbl">Folders <u>＋</u></div><div class="si"><span class="grip">⋮⋮</span>Work/Clients<span class="n">2</span></div><div class="si on"><span class="grip">⋮⋮</span>Receipts<span class="n">6</span></div><div class="si"><span class="grip">⋮⋮</span>Travel<span class="n">1</span></div><div class="si"><span class="grip">⋮⋮</span>Banking</div><div class="si"><span class="grip">⋮⋮</span>Work/Clients<span class="n">3</span></div><div class="more"><b>3 more ▾</b></div></div>
+ <div class="pane"><div class="ph"><b>Receipts</b><span>38 emails · 6 unread</span></div></div></div>
+ <div class="cm" style="left:150px;top:228px">
+  <div class="it h">▤&nbsp;Open in stack window<kbd>⌘T</kbd></div>
+  <div class="it">✓&nbsp;Mark all read<kbd>⇧U</kbd></div>
+  <div class="it">⌂&nbsp;Move all to inbox</div>
+  <div class="it">⎘&nbsp;Clear folder <small>(remove label, keep in All Mail)</small></div><hr>
+  <div class="it">✎&nbsp;Rename…</div><div class="it">⑂&nbsp;Show rule…</div><div class="it">⏸&nbsp;Pause filing</div><hr>
+  <div class="it dg">🗑&nbsp;Empty folder… <small>(trash all 38)</small></div>
+  <div class="it dg">✕&nbsp;Delete folder…</div></div>
+</div>
+<div class="win light" style="width:640px;height:470px"><div class="tb"><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="t">Delete folder</div></div>
+ <div class="body"><div class="side"><div class="si"><i>⚡</i>Priority<span class="n">7</span></div><div class="si"><i>★</i>Favourites<span class="n">3</span></div><div class="si"><i>▤</i>Everything else<span class="n">41</span></div><div class="lbl">Folders <u>＋</u></div><div class="si on"><span class="grip">⋮⋮</span>Receipts<span class="n">6</span></div></div>
+ <div class="pane"><div class="ph"><b>Receipts</b></div></div></div>
+ <div class="dim"></div>
+ <div class="dlg"><h4>Delete the “Receipts” folder?</h4><p>38 emails are labelled “Receipts”. The rule <b>from stripe.com</b> files into it.</p>
+  <div class="opt on"><div class="r"></div><div><b>Delete folder, keep the emails</b><small>Removes the Gmail label and the rule. The 38 emails stay in All Mail.</small></div></div>
+  <div class="opt"><div class="r"></div><div><b>Delete folder, return emails to inbox</b><small>Removes the label and the rule; the emails go back to your inbox.</small></div></div>
+  <div class="opt"><div class="r"></div><div><b>Delete folder and trash the emails</b><small>Moves 38 emails to Gmail Trash (30 days to recover).</small></div></div>
+  <div class="bt"><span class="bt2">Cancel</span><span class="bt2 dg">Delete folder</span></div></div>
+</div></div>
+
+<h2>6 · Reordering, and the first 5</h2>
+<div class="note">Drag a folder by its grip to reorder (or <b>⌥↑ / ⌥↓</b> on the selected folder). The first <b>5</b> folders always show; the rest are wrapped under <b>N more ▾</b>, which expands in place. Unread mail in wrapped folders rolls up onto that row (<span class="badge5">2</span>) so nothing is hidden silently. Order is saved and also drives <b>⌘[ / ⌘]</b> in the stack window.</div>
+<div class="row" style="display:flex;gap:28px;flex-wrap:wrap">
+<div class="win dark" style="width:290px;height:470px"><div class="tb"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>
+ <div class="body"><div class="side" style="width:100%;border:0"><div class="si"><i>⚡</i>Priority<span class="n">7</span></div><div class="si"><i>★</i>Favourites<span class="n">3</span></div><div class="si"><i>▤</i>Everything else<span class="n">41</span></div><div class="lbl">Folders <u>＋</u></div><div class="si"><span class="grip">⋮⋮</span>Work/Clients<span class="n">2</span></div><div class="dropline"></div><div class="si"><span class="grip">⋮⋮</span>Receipts<span class="n">6</span></div><div class="si"><span class="grip">⋮⋮</span>Travel<span class="n">1</span></div><div class="si"><span class="grip">⋮⋮</span>Banking</div><div class="si"><span class="grip">⋮⋮</span>Work/Clients<span class="n">3</span></div><div class="more"><b>3 more ▾</b><span class="badge5">2</span></div></div></div></div>
+<div class="win dark" style="width:290px;height:470px"><div class="tb"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>
+ <div class="body"><div class="side" style="width:100%;border:0"><div class="si"><i>⚡</i>Priority<span class="n">7</span></div><div class="si"><i>★</i>Favourites<span class="n">3</span></div><div class="si"><i>▤</i>Everything else<span class="n">41</span></div><div class="lbl">Folders <u>＋</u></div><div class="si"><span class="grip">⋮⋮</span>Work/Clients<span class="n">2</span></div><div class="si"><span class="grip">⋮⋮</span>Receipts<span class="n">6</span></div><div class="si"><span class="grip">⋮⋮</span>Travel<span class="n">1</span></div><div class="si"><span class="grip">⋮⋮</span>Banking</div><div class="si"><span class="grip">⋮⋮</span>Work/Clients<span class="n">3</span></div><div class="more"><b>3 more ▴</b></div>
+ <div class="si"><span class="grip">⋮⋮</span>Newsletters-read</div><div class="si drag"><span class="grip">⋮⋮</span>Health<span class="n">2</span></div><div class="si"><span class="grip">⋮⋮</span>Archive 2024</div></div></div></div>
+<div class="win light" style="width:420px;height:470px"><div class="tb"><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="t">Folders · manage</div></div>
+ <div class="pane"><div class="ph"><b>Folders</b><span>8 folders</span></div>
+  <div class="mrow"><span class="grip">⋮⋮</span><span class="nm">1 Work/Clients</span><small>14 · 2 unread</small><div class="acts"><span class="ic2">⋯</span></div></div>
+  <div class="mrow"><span class="grip">⋮⋮</span><span class="nm">2 Receipts</span><small>38 · 6 unread</small><div class="acts"><span class="ic2">⋯</span></div></div>
+  <div class="mrow"><span class="grip">⋮⋮</span><span class="nm">3 Travel</span><small>9 · 1 unread</small><div class="acts"><span class="ic2">⋯</span></div></div>
+  <div class="mrow"><span class="grip">⋮⋮</span><span class="nm">4 Banking</span><small>21</small><div class="acts"><span class="ic2">⋯</span></div></div>
+  <div class="mrow"><span class="grip">⋮⋮</span><span class="nm">5 Work/Clients</span><small>17 · 3 unread</small><div class="acts"><span class="ic2">⋯</span></div></div>
+  <div class="mrow sep">— shown in sidebar above · wrapped under “more” below —</div>
+  <div class="mrow"><span class="grip">⋮⋮</span><span class="nm">Newsletters-read</span><small>203</small><div class="acts"><span class="ic2">⋯</span></div></div>
+  <div class="mrow"><span class="grip">⋮⋮</span><span class="nm">Health</span><small>6 · 2 unread</small><div class="acts"><span class="ic2">⋯</span></div></div>
+  <div class="mrow"><span class="grip">⋮⋮</span><span class="nm">Archive 2024</span><small>412</small><div class="acts"><span class="ic2">⋯</span></div></div>
+ </div></div>
+</div>
+<div class="note" style="margin-top:12px">Left: collapsed (default), with a drop line mid-drag. Middle: expanded, dragging “Health” up toward the top 5. Right: a Folders management list with the top-5 divider; the ⋯ on each row opens the same menu as the sidebar.</div>
+<div class="legend"><b>What this adds</b>
+<ul>
+<li><b>Sidebar “Folders” section</b>: one entry per filing rule's folder (nested for <code>A/B</code> labels), with unread counts. <b>＋</b> starts a new filing rule.</li>
+<li><b>Folder view</b>: same stacked layout and keyboard navigation as Priority. Mail stays out of Priority and the menu bar count, as it does today.</li>
+<li><b>Source of truth</b>: the Gmail label, so mail you filed by hand in Gmail also shows up. Reads the label on sync; nothing is polled while closed.</li>
+<li><b>Routing pane</b>: filed count and “Open folder →” on each rule. The “rule added” toast gains an <b>Open folder</b> action.</li>
+<li><b>Stack window (⌘T) on folders</b>: a source picker in the title bar switches between Priority and any folder. A folder deck holds every message in that folder (unread first), one sender per card, with Read, Reply, Delete, All ▾ mass actions and Undo as today. New <b>To inbox</b> (<b>I</b>) removes the label and returns the message to the inbox.</li>
+<li><b>Folder management</b>: open in stack, mark all read, move all to inbox, clear folder (remove label, mail stays in All Mail), rename, show/pause rule, empty folder (trash all), delete folder (keep mail / return to inbox / trash mail).</li>
+<li><b>Order</b>: drag or ⌥↑/⌥↓. First 5 show; the rest are wrapped under “N more” with rolled-up unread.</li>
+</ul></div>
+</body></html>

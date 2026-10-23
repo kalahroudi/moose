@@ -103,9 +103,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
 
     /// The quiet Stack window: one card at a time. ⌘T.
     @objc func showStack() {
+        // From a folder in the Manager window, ⌘T goes through that folder; from anywhere else it is the priority deck as before.
+        let nav = Nav.shared
+        let fromFolder = (NSApp.keyWindow === managerWindow) && nav.pane == .folder ? nav.folder : nil
+        openStack(source: fromFolder.map { .folder($0) } ?? (stackWindow == nil ? .priority : StackModel.shared.source))
+    }
+
+    func openStack(source: StackModel.Source) {
         popover.performClose(nil)
         if stackWindow == nil {
-            StackModel.shared.rebuild()
+            StackModel.shared.setSource(source)
             let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 680, height: 620),
                              styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView], backing: .buffered, defer: false)
             w.titlebarAppearsTransparent = true; w.titleVisibility = .hidden
@@ -114,7 +121,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
             w.contentView = NSHostingView(rootView: StackView())
             if !w.setFrameUsingName("MooseStack") { w.center() }
             stackWindow = w
-        }
+        } else if StackModel.shared.source != source { StackModel.shared.setSource(source) }
         stackWindow?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
     }

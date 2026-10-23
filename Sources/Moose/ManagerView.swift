@@ -5,23 +5,25 @@ import MooseKit
 
 /// Panes of the Manager window. Named `Pane`, not `Section`: SwiftUI already has a `Section`.
 enum Pane: String, CaseIterable, Identifiable {
-    case priority, favourites, everything, muted, routing, muting, agents, settings, help
+    case priority, favourites, everything, muted, folder, folders, routing, muting, agents, settings, help
     var id: String { rawValue }
     var title: String {
         switch self {
-        case .priority: "Priority"; case .favourites: "Favourites"; case .everything: "Everything else"; case .muted: "Muted"
+        case .priority: "Priority"; case .favourites: "Favourites"; case .everything: "Everything else"; case .muted: "Muted"; case .folder: "Folder"; case .folders: "Folders"
         case .routing: "Routing"; case .muting: "Muting"; case .agents: "Agents"; case .settings: "Settings"; case .help: "Help"
         }
     }
     var symbol: String {
         switch self {
-        case .priority: "bolt.fill"; case .favourites: "star.fill"; case .everything: "tray.full"; case .muted: "bell.slash"
+        case .priority: "bolt.fill"; case .favourites: "star.fill"; case .everything: "tray.full"; case .muted: "bell.slash"; case .folder: "folder"; case .folders: "folder.badge.gearshape"
         case .routing: "arrow.triangle.branch"; case .muting: "line.3.horizontal.decrease"; case .agents: "sparkles"; case .settings: "gearshape"; case .help: "questionmark.circle"
         }
     }
     var mailView: MailView? {
         switch self { case .priority: .priority; case .favourites: .favourites; case .everything: .everythingElse; case .muted: .muted; default: nil }
     }
+    /// The panes that list messages (and open them in the thread view).
+    var isMailList: Bool { mailView != nil || self == .folder }
 }
 
 @MainActor @Observable
@@ -32,6 +34,16 @@ final class Nav {
     var open: MailMessage?            // the message being read
     var settingsTab: SettingsPane.Tab = .general
     let list = ListState()            // filters, sort and selection of the stack lists
+    var folder: String?               // the folder shown while `pane == .folder`
+    var foldersExpanded = false       // the sidebar shows the first 5 folders; the rest are wrapped under "N more"
+    var renaming: String?             // folder dialogs, shown by ManagerView
+    var emptying: String?
+    var deleting: String?
+
+    func openFolder(_ name: String) {
+        folder = name; pane = .folder; open = nil
+        if let i = MailModel.shared.folderNames.firstIndex(where: { Folders.key($0) == Folders.key(name) }), i >= Folders.visibleCount { foldersExpanded = true }
+    }
 }
 
 /// The Manager window: a fixed sidebar (collapsible to icons) and a main pane that uses the full width.
@@ -54,6 +66,7 @@ struct ManagerView: View {
             }
             .overlay(alignment: .bottom) { ToastView() }
         }
+        .folderDialogs()
         .ignoresSafeArea(.container, edges: .top)
         .frame(minWidth: 860, minHeight: 560)
         .onAppear { model.setManagerVisible(true) }
@@ -64,11 +77,12 @@ struct ManagerView: View {
             SkeletonList(rows: 9).frame(maxHeight: .infinity, alignment: .top).padding(.top, 40)   // never show a half-loaded page
         } else if model.needsSetup && nav.pane != .settings && nav.pane != .help {
             SetupView().padding(24).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top).padding(.top, 40)
-        } else if let m = nav.open, nav.pane.mailView != nil {
+        } else if let m = nav.open, nav.pane.isMailList {
             ThreadView(message: m)
         } else {
             switch nav.pane {
-            case .priority, .favourites, .everything, .muted: StackListPane(pane: nav.pane)
+            case .priority, .favourites, .everything, .muted, .folder: StackListPane(pane: nav.pane)
+            case .folders: FoldersPane()
             case .routing: RoutingPane()
             case .muting: MutingPane()
             case .agents: AgentsPane()
@@ -95,6 +109,7 @@ struct Sidebar: View {
             }.padding(.top, 14).padding(.bottom, 8).padding(.horizontal, collapsed ? 0 : 6)
             if !collapsed { label("Stacks") }
             ForEach([Pane.priority, .favourites, .everything, .muted]) { item($0, count: mail.hasAccount ? mail.count($0.mailView!) : nil) }
+            if mail.hasAccount { SidebarFolders(collapsed: collapsed) }
             if mail.hasAccount {
                 if !collapsed { label("Accounts") }
                 ForEach(mail.accounts) { account($0) }
@@ -138,7 +153,7 @@ struct Sidebar: View {
 
     private func account(_ a: MailAccount) -> some View {
         let on = nav.account == a.email
-        return Button { nav.account = on ? nil : a.email; nav.open = nil; if nav.pane.mailView == nil { nav.pane = .priority } } label: {
+        return Button { nav.account = on ? nil : a.email; nav.open = nil; if !nav.pane.isMailList { nav.pane = .priority } } label: {
             HStack(spacing: 9) {
                 RoundedRectangle(cornerRadius: 3).fill(mail.accountColor(a.email)).frame(width: 9, height: 9).frame(width: 20)
                 if !collapsed {

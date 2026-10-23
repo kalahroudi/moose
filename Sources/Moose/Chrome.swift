@@ -86,7 +86,12 @@ struct ToastView: View {
     let model = AppModel.shared
     var body: some View {
         if let t = model.toast {
-            Text(t.message).font(.system(size: 12.5)).lineLimit(3)
+            HStack(spacing: 12) {
+                Text(t.message).font(.system(size: 12.5)).lineLimit(3)
+                if let title = t.actionTitle, let act = t.action {
+                    Button { act(); model.toast = nil } label: { Text(title).font(.system(size: 12.5, weight: .semibold)).foregroundStyle(Theme.accent).contentShape(Rectangle()) }.buttonStyle(.plain)
+                }
+            }
                 .padding(.horizontal, 14).padding(.vertical, 8)
                 .foregroundStyle(t.isError ? Theme.danger : Color.primary)
                 .background(.regularMaterial, in: Capsule())

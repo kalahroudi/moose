@@ -68,7 +68,7 @@ public enum RuleParser {
             .split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces).trimmingCharacters(in: quotes) }.filter { !$0.isEmpty }
     }
 
-    /// Who or what a rule is about. "all emails from cassiobury school" and "from news@club.com about sale" both work.
+    /// Who or what a rule is about. "all emails from stripe.com" and "from news@club.com about sale" both work.
     static func target(_ rest: String) -> (senders: [String], keywords: [String]) {
         var words = rest.trimmingCharacters(in: .whitespaces).split(separator: " ", omittingEmptySubsequences: true).map(String.init)
         while let w = words.first, fillers.contains(w.lowercased()), words.count > 1 { words.removeFirst() }
@@ -122,7 +122,7 @@ public enum RuleParser {
         return nil
     }
 
-    /// "group all emails from cassiobury school into one folder called Cassiobury School", "move invoices to Billing",
+    /// "group all emails from stripe.com into one folder called Receipts", "move invoices to Billing",
     /// "file mail from stripe.com in folder Receipts". The folder name keeps the case the user typed.
     static func parseFolder(_ t: String) -> Rule? {
         let lower = t.lowercased()

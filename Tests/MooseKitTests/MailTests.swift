@@ -216,3 +216,50 @@ final class DeckTests: XCTestCase {
         XCTAssertEqual(g["me@x.com"]?.count, 2); XCTAssertEqual(g["work@x.com"]?.count, 1)
     }
 }
+
+final class FolderTests: XCTestCase {
+    func msg(_ id: String, _ from: String, unread: Bool, age: TimeInterval) -> MailMessage {
+        MailMessage(id: id, threadId: id, account: "me@gmail.com", fromName: "", fromEmail: from, subject: id, snippet: "", date: Date().addingTimeInterval(-age), unread: unread)
+    }
+
+    func testNamesFollowRulesThenUserOrderAndIgnoreCase() {
+        let rules = [Rule(senders: ["a.com"], action: .file("Receipts")), Rule(senders: ["b.com"], action: .file("Travel")), Rule(senders: ["c.com"], action: .file("receipts")),
+                     Rule(senders: ["d.com"], action: .mute), Rule(senders: ["e.com"], action: .file("Banking"))]
+        XCTAssertEqual(Folders.names(rules: rules, order: []), ["Receipts", "Travel", "Banking"])
+        XCTAssertEqual(Folders.names(rules: rules, order: ["banking", "Gone", "Receipts"]), ["Banking", "Receipts", "Travel"])
+    }
+
+    func testMoveAndShift() {
+        let l = ["A", "B", "C", "D"]
+        XCTAssertEqual(Folders.moved("D", before: "B", in: l), ["A", "D", "B", "C"])
+        XCTAssertEqual(Folders.moved("A", before: nil, in: l), ["B", "C", "D", "A"])
+        XCTAssertEqual(Folders.moved("X", before: "A", in: l), l)
+        XCTAssertEqual(Folders.shifted("C", by: -1, in: l), ["A", "C", "B", "D"])
+        XCTAssertEqual(Folders.shifted("A", by: -1, in: l), l)
+        XCTAssertEqual(Folders.shifted("D", by: 1, in: l), l)
+    }
+
+    func testStacksAndDeckPutUnreadSendersFirst() {
+        let ms = [msg("1", "old@x.com", unread: false, age: 100), msg("2", "new@x.com", unread: true, age: 5000), msg("3", "new@x.com", unread: false, age: 10), msg("4", "old@x.com", unread: false, age: 50)]
+        let stacks = Folders.stacks(ms, favourites: [])
+        XCTAssertEqual(stacks.map(\.key), ["new@x.com", "old@x.com"])                    // newest sender first
+        XCTAssertEqual(stacks[0].messages.map(\.message.id), ["3", "2"])                  // newest message first
+        let deck = Folders.deck(ms, favourites: [])
+        XCTAssertEqual(deck.map(\.key), ["new@x.com", "old@x.com"])
+        XCTAssertEqual(deck[0].ids, ["2", "3"])                                           // unread first inside a sender
+    }
+
+    func testOldDataFileStillLoads() throws {
+        let old = #"{"version":1,"accounts":[],"favourites":["a@b.com"],"rules":[],"repliedTo":[],"agentAccess":"draftAndAsk","undoSeconds":30,"sendSignature":"","messages":[],"syncedAt":{},"composeDrafts":{}}"#
+        let d = try JSONDecoder().decode(MooseData.self, from: Data(old.utf8))
+        XCTAssertEqual(d.favourites, ["a@b.com"])
+        XCTAssertEqual(d.folderOrder, [])
+        XCTAssertEqual(try JSONDecoder().decode(MooseData.self, from: Data("{}".utf8)).undoSeconds, 30)
+    }
+
+    func testFolderOrderRoundTrips() throws {
+        var d = MooseData(); d.folderOrder = ["B", "A"]; d.keepInInbox = ["m1"]
+        let back = try JSONDecoder().decode(MooseData.self, from: JSONEncoder().encode(d))
+        XCTAssertEqual(back.folderOrder, ["B", "A"]); XCTAssertEqual(back.keepInInbox, ["m1"])
+    }
+}

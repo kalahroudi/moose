@@ -15,13 +15,15 @@ public enum AppLog {
     private static let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "app", category: "app")
     public static var fileURL: URL { AppPaths().root.appendingPathComponent("app.log") }
 
+    /// Everything is scrubbed (addresses, tokens, paths, user name) before it reaches the system log or app.log. Never log mail content or folder names.
     public static func error(_ error: Error, context: String) {
-        let detail = String(reflecting: error)   // type + payload, not just localizedDescription
+        let context = Scrub.text(context)
+        let detail = Scrub.text(String(reflecting: error))   // type + payload, not just localizedDescription
         logger.error("\(context, privacy: .public): \(detail, privacy: .public)")
         append("ERROR \(context): \(detail)")
     }
 
-    public static func info(_ line: String) { logger.info("\(line, privacy: .public)"); append("INFO \(line)") }
+    public static func info(_ line: String) { let line = Scrub.text(line); logger.info("\(line, privacy: .public)"); append("INFO \(line)") }
 
     private static func append(_ line: String) {
         let stamp = ISO8601DateFormatter().string(from: Date())

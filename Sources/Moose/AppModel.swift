@@ -16,6 +16,10 @@ struct Toast: Identifiable, Equatable {
     let id = UUID()
     let message: String
     var isError = false
+    /// An optional button, e.g. "Open folder".
+    var actionTitle: String?
+    var action: (@MainActor () -> Void)?
+    static func == (a: Toast, b: Toast) -> Bool { a.id == b.id }
 }
 
 /// App-wide state. Data is only refreshed while the popover or the manager window is visible, so an idle app costs nothing.
@@ -114,10 +118,10 @@ final class AppModel {
         if case .failed(let m) = state { show(m, error: true) } else if let t = tasks.first(where: { $0.id == id }) { show("\(t.title) finished") }
     }
 
-    func show(_ message: String, error: Bool = false) {
-        let t = Toast(message: message, isError: error)
+    func show(_ message: String, error: Bool = false, actionTitle: String? = nil, action: (@MainActor () -> Void)? = nil) {
+        let t = Toast(message: message, isError: error, actionTitle: actionTitle, action: action)
         toast = t
-        Task { try? await Task.sleep(for: .seconds(error ? 8 : 3.5)); if toast == t { toast = nil } }
+        Task { try? await Task.sleep(for: .seconds(error ? 8 : action == nil ? 3.5 : 7)); if toast == t { toast = nil } }
     }
 
     func notify(_ title: String, body: String = "") {
