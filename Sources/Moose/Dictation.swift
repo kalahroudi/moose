@@ -40,8 +40,12 @@ final class Dictation {
         let input = eng.inputNode
         // Lid closed: the built-in microphone is shut away, so listen through the iPhone (or the chosen device) instead.
         let mic = Microphones.resolve(Prefs.shared.microphone)
-        if let mic, !Microphones.route(eng, to: mic) { error = "Couldn't use \(mic.name) as the microphone."; return }
-        source = mic?.name
+        var routed = false
+        if let mic {
+            routed = Microphones.route(eng, to: mic)
+            if !routed && Prefs.shared.microphone != Microphones.automatic { error = "Couldn't use \(mic.name) as the microphone."; return }
+        }
+        source = routed ? mic?.name : nil
         let format = input.outputFormat(forBus: 0)
         guard format.sampleRate > 0 else { error = Microphones.lidClosed() ? "The lid is closed and no iPhone microphone was found. Bring your iPhone near the Mac, or choose a microphone in Settings." : "No microphone found."; return }
         input.installTap(onBus: 0, bufferSize: 1024, format: format, block: Self.tap(req) { [weak self] l in Task { @MainActor in self?.level = l } })
