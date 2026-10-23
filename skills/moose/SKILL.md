@@ -19,7 +19,7 @@ Moose is a text-only, stacked, multi-account Gmail client. Mail is grouped into 
 1. `get_status`: accounts, access level, how many stacks need attention. If `accounts` is empty, tell the user to finish setup in Moose.
 2. `list_stacks {view: "priority"}`: ranked stacks with `why`. Summarise the top few for the user.
 3. `get_brief {message_id}` for the gist (summary, what it asks, urgency, dates; cached). `read_message` or `get_clean_text` (tidied text, tracking links listed apart) before judging or replying.
-4. Organise: `set_favourite`, `mute_sender`, `create_rule` ("mute newsletters", "favourite maya@acme.com", "boost invoice by 25", "mute X for a week", "move emails from X to Folder Name"), `mark_read`, `archive_message`. Muting hides mail from Priority, it never deletes. Mention what you changed so the user can undo it (`delete_rule`).
+4. Organise: `set_favourite`, `mute_sender`, `create_rule` ("mute newsletters", "favourite maya@acme.com", "boost invoice by 25", "mute X for a week", "move emails from X to Folder Name"), `mark_read`, `archive_message`. Muting hides mail from Priority, it never deletes. `block_sender` also archives their mail now and on every sync (undo with `undo_last` or `delete_rule`). For mailing lists, check `get_unsubscribe_options`, then `unsubscribe` (needs the user's go-ahead and `confirm: true`; sends a one-click request or a short email, then blocks the sender). Mention what you changed so the user can undo it (`delete_rule`).
    Filed mail: `list_folders` shows the folders in the user's order (the first 5 show in the sidebar, the rest are wrapped under "more"); `list_folder {name}` returns its messages with ids that work with `read_message`, `mark_read` and `archive_messages`. Never delete a folder or empty it without asking.
 5. Reply: `draft_reply {message_id}` (omit `body` and Moose drafts with the user's own Claude in their voice; add `tone` or `guidance`; add `quote` to answer one passage of the original, which is also quoted under the reply). Show the draft. Send only on approval.
 
@@ -28,7 +28,8 @@ Moose is a text-only, stacked, multi-account Gmail client. Mail is grouped into 
 | MCP tool | Changes things |
 |---|---|
 | `get_status`, `list_stacks`, `search_messages`, `list_rules`, `read_message`, `get_clean_text`, `get_brief`, `sync_mail` | no |
-| `mark_read`, `archive_message`, `set_favourite`, `mute_sender`, `create_rule` | organises mail, reversible |
+| `mark_read`, `archive_message`, `set_favourite`, `mute_sender`, `block_sender`, `create_rule` | organises mail, reversible |
+| `unsubscribe` | sends an unsubscribe request outward; the user approves unless Full access |
 | `archive_messages {message_ids}` | archives many, reversible (`undo_last`) |
 | `trash_messages {message_ids, confirm}` | moves to Gmail Trash (30 days), ask the user first |
 | `list_folders`, `list_folder {name}` | no. Folders are the Gmail labels that filing rules move mail into; their mail is out of the inbox, so it is not in `list_stacks` |
