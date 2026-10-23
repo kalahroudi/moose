@@ -34,6 +34,8 @@ public struct MooseData: Codable, Sendable {
     public var folderOrder: [String] = []
     /// Messages the user moved back to the inbox from a folder. Filing rules leave them alone.
     public var keepInInbox: [String] = []
+    /// Snoozed messages and "remind me if no reply" reminders (see `FollowUps`).
+    public var followUps: [FollowUp] = []
     public init() {}
 
     /// Every key is optional on disk, so a file written by an older version still loads instead of being treated as corrupt.
@@ -52,10 +54,11 @@ public struct MooseData: Codable, Sendable {
         composeDrafts = try c.decodeIfPresent([String: String].self, forKey: .composeDrafts) ?? [:]
         folderOrder = try c.decodeIfPresent([String].self, forKey: .folderOrder) ?? []
         keepInInbox = try c.decodeIfPresent([String].self, forKey: .keepInInbox) ?? []
+        followUps = try c.decodeIfPresent([FollowUp].self, forKey: .followUps) ?? []
     }
 
     public var context: PriorityContext {
-        PriorityContext(favourites: Set(favourites), repliedTo: Set(repliedTo), rules: rules)
+        PriorityContext(favourites: Set(favourites), repliedTo: Set(repliedTo), rules: rules, snoozed: FollowUps.snoozed(followUps), resurfaced: FollowUps.resurfaced(followUps))
     }
     public func scored() -> [ScoredMessage] { Priority.scoreAll(messages, context) }
 }

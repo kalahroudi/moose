@@ -5,17 +5,17 @@ import MooseKit
 
 /// Panes of the Manager window. Named `Pane`, not `Section`: SwiftUI already has a `Section`.
 enum Pane: String, CaseIterable, Identifiable {
-    case priority, favourites, everything, muted, folder, folders, routing, muting, agents, settings, help
+    case priority, favourites, everything, muted, followUps, folder, folders, routing, muting, agents, settings, help
     var id: String { rawValue }
     var title: String {
         switch self {
-        case .priority: "Priority"; case .favourites: "Favourites"; case .everything: "Everything else"; case .muted: "Muted"; case .folder: "Folder"; case .folders: "Folders"
+        case .priority: "Priority"; case .favourites: "Favourites"; case .everything: "Everything else"; case .muted: "Muted"; case .followUps: "Follow up"; case .folder: "Folder"; case .folders: "Folders"
         case .routing: "Routing"; case .muting: "Muting"; case .agents: "Agents"; case .settings: "Settings"; case .help: "Help"
         }
     }
     var symbol: String {
         switch self {
-        case .priority: "bolt.fill"; case .favourites: "star.fill"; case .everything: "tray.full"; case .muted: "bell.slash"; case .folder: "folder"; case .folders: "folder.badge.gearshape"
+        case .priority: "bolt.fill"; case .favourites: "star.fill"; case .everything: "tray.full"; case .muted: "bell.slash"; case .followUps: "alarm"; case .folder: "folder"; case .folders: "folder.badge.gearshape"
         case .routing: "arrow.triangle.branch"; case .muting: "line.3.horizontal.decrease"; case .agents: "sparkles"; case .settings: "gearshape"; case .help: "questionmark.circle"
         }
     }
@@ -23,7 +23,7 @@ enum Pane: String, CaseIterable, Identifiable {
         switch self { case .priority: .priority; case .favourites: .favourites; case .everything: .everythingElse; case .muted: .muted; default: nil }
     }
     /// The panes that list messages (and open them in the thread view).
-    var isMailList: Bool { mailView != nil || self == .folder }
+    var isMailList: Bool { mailView != nil || self == .folder || self == .followUps }
 }
 
 @MainActor @Observable
@@ -119,6 +119,7 @@ struct ManagerView: View {
         } else {
             switch nav.pane {
             case .priority, .favourites, .everything, .muted, .folder: StackListPane(pane: nav.pane)
+            case .followUps: FollowUpsPane()
             case .folders: FoldersPane()
             case .routing: RoutingPane()
             case .muting: MutingPane()
@@ -154,6 +155,7 @@ struct Sidebar: View {
             }.buttonStyle(.plain).help("New email (⌘N)").accessibilityLabel("New email").disabled(!mail.hasAccount).dimWhenDisabled()
             if !collapsed { label("Stacks") }
             ForEach([Pane.priority, .favourites, .everything, .muted]) { item($0, count: mail.hasAccount ? mail.count($0.mailView!) : nil) }
+            if mail.hasAccount { item(.followUps, count: mail.dueFollowUps.count) }
             if mail.hasAccount { SidebarFolders(collapsed: collapsed) }
             if mail.hasAccount {
                 if !collapsed { label("Accounts") }

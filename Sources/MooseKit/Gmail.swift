@@ -136,6 +136,12 @@ public actor GmailClient {
                            messageIDHeader: h("Message-ID"), referencesHeader: h("References"))
     }
 
+    /// Whether someone other than the user has written in this thread since `since`. One small metadata call.
+    public func hasReply(thread id: String, since: Date) async throws -> Bool {
+        let r = try await request("/threads/\(id)", query: [.init(name: "format", value: "metadata"), .init(name: "metadataHeaders", value: "From")])
+        return FollowUps.hasReply(in: r, account: account, since: since)
+    }
+
     /// The full text of one message (quoted replies trimmed).
     public func fullText(_ id: String) async throws -> String {
         let r = try await request("/messages/\(id)", query: [.init(name: "format", value: "full")])

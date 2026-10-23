@@ -79,8 +79,8 @@ final class AppModel {
         // Opening the popover or window must not hammer Gmail: sync only when the last one is older than the chosen interval.
         let stale = mail.lastSync.map { Date().timeIntervalSince($0) > Double(max(30, settings.refreshSeconds)) } ?? true
         if stale { await mail.sync() }
-        let unread = mail.count(.priority)
-        status = unread == 0 ? "All clear" : "\(unread) \(unread == 1 ? "stack needs" : "stacks need") you"
+        let unread = mail.attentionCount
+        status = unread == 0 ? "All clear" : "\(unread) \(unread == 1 ? "thing needs" : "things need") you"
         onStatusChange?(mail.syncing || busy ? .busy : unread > 0 ? .active : .idle)
         loadedOnce = true; updatedAt = .now
     }
