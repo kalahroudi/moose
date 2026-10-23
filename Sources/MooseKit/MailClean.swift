@@ -77,9 +77,27 @@ public extension MailText {
         return out
     }
 
+    /// Newsletters pad with zero-width and exotic space characters; they look blank but defeat blank-line detection.
+    static func stripInvisible(_ s: String) -> String {
+        let fillers: Set<UInt32> = [0x2800, 0x3164, 0x115F, 0x1160, 0xFFA0, 0x17B4, 0x17B5, 0x034F]
+        var out = String.UnicodeScalarView()
+        for u in s.unicodeScalars {
+            if u == "\n" || u == "\t" { out.append(u); continue }
+            if u == "\r" { out.append("\n"); continue }  // a bare CR (or the CR of CRLF, collapsed below) is a line break
+            if fillers.contains(u.value) { continue }
+            switch u.properties.generalCategory {
+            case .format, .control: if u.value == 0x0B || u.value == 0x0C || u.value == 0x85 { out.append("\n") }
+            case .lineSeparator, .paragraphSeparator: out.append("\n")
+            case .spaceSeparator: out.append(" ")
+            default: out.append(u)
+            }
+        }
+        return String(out)
+    }
+
     /// Turns raw text into readable paragraphs. Pure and quick, so it can run on every open.
     static func clean(_ raw: String) -> CleanedMail {
-        let text = raw.replacingOccurrences(of: "\r\n", with: "\n").replacingOccurrences(of: "\u{00A0}", with: " ")
+        let text = stripInvisible(raw.replacingOccurrences(of: "\r\n", with: "\n"))
         let rawLines = text.components(separatedBy: "\n").map { $0.trimmingCharacters(in: .whitespaces) }
         let blanks = rawLines.filter(\.isEmpty).count
 

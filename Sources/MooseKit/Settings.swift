@@ -34,6 +34,8 @@ public struct MooseData: Codable, Sendable {
     public var folderOrder: [String] = []
     /// Messages the user moved back to the inbox from a folder. Filing rules leave them alone.
     public var keepInInbox: [String] = []
+    /// The newest mail of each folder (by `Folders.key`), so a folder opens at once and is refreshed from Gmail behind it.
+    public var folderCache: [String: [MailMessage]] = [:]
     public init() {}
 
     /// Every key is optional on disk, so a file written by an older version still loads instead of being treated as corrupt.
@@ -52,6 +54,7 @@ public struct MooseData: Codable, Sendable {
         composeDrafts = try c.decodeIfPresent([String: String].self, forKey: .composeDrafts) ?? [:]
         folderOrder = try c.decodeIfPresent([String].self, forKey: .folderOrder) ?? []
         keepInInbox = try c.decodeIfPresent([String].self, forKey: .keepInInbox) ?? []
+        folderCache = try c.decodeIfPresent([String: [MailMessage]].self, forKey: .folderCache) ?? [:]
     }
 
     public var context: PriorityContext {
