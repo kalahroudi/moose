@@ -35,6 +35,7 @@ struct SetupView: View {
             if mail.client == nil { clientGuide } else if !mail.hasAccount {
                 Button { mail.addAccount() } label: { HStack(spacing: 6) { if mail.signingIn { ProgressView().controlSize(.small) }; Text(mail.signingIn ? "Waiting for Google…" : "Sign in with Google") } }
                     .buttonStyle(Pill(kind: .primary)).disabled(mail.signingIn)
+                if mail.signingIn { Button("Cancel") { mail.cancelSignIn() }.buttonStyle(Pill(kind: .primary)) }
             }
             if !hasClaude, Shell.find("brew") != nil {
                 HStack(spacing: 8) {
@@ -54,7 +55,7 @@ struct SetupView: View {
             VStack(alignment: .leading, spacing: 6) {
                 Label("Open the page, create a project if asked, and enable the Gmail API.", systemImage: "1.circle")
                 Label("Create an OAuth client of type “Desktop app”, then press Download JSON.", systemImage: "2.circle")
-                Label("On the consent screen choose “Publish app”, otherwise sign-ins expire every 7 days. Personal use needs no review.", systemImage: "3.circle")
+                Label("On the consent screen choose “Publish app”, otherwise Google blocks sign-in (403 access_denied) or expires it every 7 days. Personal use needs no review; on the “unverified app” warning choose Advanced, then Continue.", systemImage: "3.circle")
             }.font(.system(size: 12)).foregroundStyle(.secondary).labelStyle(.titleAndIcon)
             HStack(spacing: 8) {
                 Link(destination: URL(string: "https://console.cloud.google.com/apis/library/gmail.googleapis.com")!) { Text("1 · Enable Gmail API") }.buttonStyle(.plain).modifier(LinkPill())

@@ -118,7 +118,11 @@ struct AccountsView: View {
                     SettingRow(a.email, "Connected. Tokens are kept in your Keychain.") { Button("Disconnect") { mail.removeAccount(a.email) }.buttonStyle(Pill(kind: .danger)) }
                 }
                 SettingRow("Add an address", mail.client == nil ? "Create your Google client first (see the setup screen)." : "Opens Google in your browser.") {
-                    Button { mail.addAccount() } label: { Text(mail.signingIn ? "Waiting…" : "Add account") }.buttonStyle(Pill(kind: .primary)).disabled(mail.client == nil || mail.signingIn)
+                    if mail.signingIn {
+                        Button("Cancel") { mail.cancelSignIn() }.buttonStyle(Pill(kind: .primary))
+                    } else {
+                        Button { mail.addAccount() } label: { Text("Add account") }.buttonStyle(Pill(kind: .primary)).disabled(mail.client == nil)
+                    }
                 }
             }
             SettingsGroup("Sending") {
