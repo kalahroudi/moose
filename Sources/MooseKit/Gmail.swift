@@ -108,6 +108,14 @@ public actor GmailClient {
         return (h("To"), h("Cc"))
     }
 
+    /// How this sender lets the user opt out, from the List-Unsubscribe headers. Nil when the message has none.
+    public func unsubscribeOption(_ id: String) async throws -> UnsubscribeOption? {
+        let r = try await request("/messages/\(id)", query: [.init(name: "format", value: "metadata"), .init(name: "metadataHeaders", value: "List-Unsubscribe"), .init(name: "metadataHeaders", value: "List-Unsubscribe-Post")])
+        let hs = ((r["payload"] as? [String: Any])?["headers"] as? [[String: Any]]) ?? []
+        func h(_ n: String) -> String? { hs.first { ($0["name"] as? String)?.lowercased() == n.lowercased() }?["value"] as? String }
+        return UnsubscribeOption.parse(listUnsubscribe: h("List-Unsubscribe"), post: h("List-Unsubscribe-Post"))
+    }
+
     func fetchMetadata(_ id: String) async throws -> MailMessage? {
         let headers = ["From", "Subject", "List-Unsubscribe", "Precedence", "Message-ID", "References"]
         let r = try await request("/messages/\(id)", query: [.init(name: "format", value: "metadata")] + headers.map { .init(name: "metadataHeaders", value: $0) })
@@ -126,6 +134,12 @@ public actor GmailClient {
                            snippet: snippet, date: Date(timeIntervalSince1970: ms / 1000), unread: labels.contains("UNREAD"), labels: labels,
                            bulkHeader: h("List-Unsubscribe") != nil || (h("Precedence")?.lowercased() == "bulk"),
                            messageIDHeader: h("Message-ID"), referencesHeader: h("References"))
+    }
+
+    /// Whether someone other than the user has written in this thread since `since`. One small metadata call.
+    public func hasReply(thread id: String, since: Date) async throws -> Bool {
+        let r = try await request("/threads/\(id)", query: [.init(name: "format", value: "metadata"), .init(name: "metadataHeaders", value: "From")])
+        return FollowUps.hasReply(in: r, account: account, since: since)
     }
 
     /// The full text of one message (quoted replies trimmed).

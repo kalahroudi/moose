@@ -5,17 +5,17 @@ import MooseKit
 
 /// Panes of the Manager window. Named `Pane`, not `Section`: SwiftUI already has a `Section`.
 enum Pane: String, CaseIterable, Identifiable {
-    case priority, favourites, everything, muted, folder, folders, routing, muting, agents, settings, help
+    case priority, favourites, everything, muted, followUps, folder, folders, routing, muting, agents, settings, help
     var id: String { rawValue }
     var title: String {
         switch self {
-        case .priority: "Priority"; case .favourites: "Favourites"; case .everything: "Everything else"; case .muted: "Muted"; case .folder: "Folder"; case .folders: "Folders"
+        case .priority: "Priority"; case .favourites: "Favourites"; case .everything: "Everything else"; case .muted: "Muted"; case .followUps: "Follow up"; case .folder: "Folder"; case .folders: "Folders"
         case .routing: "Routing"; case .muting: "Muting"; case .agents: "Agents"; case .settings: "Settings"; case .help: "Help"
         }
     }
     var symbol: String {
         switch self {
-        case .priority: "bolt.fill"; case .favourites: "star.fill"; case .everything: "tray.full"; case .muted: "bell.slash"; case .folder: "folder"; case .folders: "folder.badge.gearshape"
+        case .priority: "bolt.fill"; case .favourites: "star.fill"; case .everything: "tray.full"; case .muted: "bell.slash"; case .followUps: "alarm"; case .folder: "folder"; case .folders: "folder.badge.gearshape"
         case .routing: "arrow.triangle.branch"; case .muting: "line.3.horizontal.decrease"; case .agents: "sparkles"; case .settings: "gearshape"; case .help: "questionmark.circle"
         }
     }
@@ -23,13 +23,13 @@ enum Pane: String, CaseIterable, Identifiable {
         switch self { case .priority: .priority; case .favourites: .favourites; case .everything: .everythingElse; case .muted: .muted; default: nil }
     }
     /// The panes that list messages (and open them in the thread view).
-    var isMailList: Bool { mailView != nil || self == .folder }
+    var isMailList: Bool { mailView != nil || self == .folder || self == .followUps }
 }
 
 @MainActor @Observable
 final class Nav {
     static let shared = Nav()
-    var pane: Pane = .priority
+    var pane: Pane = .priority { willSet { if newValue != pane { remember() } } }
     var account: String?              // filter the stack views to one address
     var open: MailMessage?            // the message being read
     var settingsTab: SettingsPane.Tab = .general
@@ -40,8 +40,45 @@ final class Nav {
     var emptying: String?
     var deleting: String?
 
+    private var trail: [(pane: Pane, folder: String?)] = []     // where the mouse's back button goes
+    private var ahead: [(pane: Pane, folder: String?)] = []     // and where forward goes after a back
+    private var closed: MailMessage?                            // a message that back just closed, for forward to reopen
+    private var travelling = false
+
+    private func remember() {
+        guard !travelling else { return }
+        trail.append((pane, folder)); if trail.count > 50 { trail.removeFirst() }
+        ahead = []; closed = nil
+    }
+
+    private func travel(to p: (pane: Pane, folder: String?)) {
+        travelling = true; defer { travelling = false }
+        folder = p.folder; pane = p.pane
+    }
+
+    /// One step back: closes the open message, else returns to the previous pane. False when there is nowhere to go.
+    @discardableResult
+    func back() -> Bool {
+        if let m = open { open = nil; closed = m; return true }
+        guard let p = trail.popLast() else { return false }
+        ahead.append((pane, folder)); closed = nil
+        travel(to: p)
+        return true
+    }
+
+    /// Undoes a back: reopens the message back closed, else returns to the pane back left.
+    @discardableResult
+    func forward() -> Bool {
+        if open == nil, let m = closed { open = m; closed = nil; return true }
+        guard let p = ahead.popLast() else { return false }
+        trail.append((pane, folder))
+        travel(to: p)
+        return true
+    }
+
     func openFolder(_ name: String) {
-        folder = name; pane = .folder; open = nil
+        if pane == .folder, let f = folder, Folders.key(f) != Folders.key(name) { remember() }
+        pane = .folder; folder = name; open = nil
         if let i = MailModel.shared.folderNames.firstIndex(where: { Folders.key($0) == Folders.key(name) }), i >= Folders.visibleCount { foldersExpanded = true }
     }
 }
@@ -69,7 +106,7 @@ struct ManagerView: View {
         .folderDialogs()
         .ignoresSafeArea(.container, edges: .top)
         .frame(minWidth: 860, minHeight: 560)
-        .onAppear { model.setManagerVisible(true) }
+        .onAppear { model.setManagerVisible(true); ManagerMouse.shared.install() }
     }
 
     @ViewBuilder private var detail: some View {
@@ -82,6 +119,7 @@ struct ManagerView: View {
         } else {
             switch nav.pane {
             case .priority, .favourites, .everything, .muted, .folder: StackListPane(pane: nav.pane)
+            case .followUps: FollowUpsPane()
             case .folders: FoldersPane()
             case .routing: RoutingPane()
             case .muting: MutingPane()
@@ -117,6 +155,7 @@ struct Sidebar: View {
             }.buttonStyle(.plain).help("New email (⌘N)").accessibilityLabel("New email").disabled(!mail.hasAccount).dimWhenDisabled()
             if !collapsed { label("Stacks") }
             ForEach([Pane.priority, .favourites, .everything, .muted]) { item($0, count: mail.hasAccount ? mail.count($0.mailView!) : nil) }
+            if mail.hasAccount { item(.followUps, count: mail.dueFollowUps.count) }
             if mail.hasAccount { SidebarFolders(collapsed: collapsed) }
             if mail.hasAccount {
                 if !collapsed { label("Accounts") }
@@ -195,6 +234,22 @@ struct OutboxBar: View {
                     }
                 }.padding(.horizontal, 14).padding(.bottom, 12)
             }
+        }
+    }
+}
+
+/// Mouse support for the Manager window: the back and forward buttons (or a horizontal swipe from a mouse driver) walk through the panes you visited.
+@MainActor
+final class ManagerMouse {
+    static let shared = ManagerMouse()
+    private var monitor: Any?
+
+    func install() {
+        guard monitor == nil else { return }
+        monitor = NSEvent.addLocalMonitorForEvents(matching: [.otherMouseDown, .swipe]) { e in
+            guard e.window?.frameAutosaveName == "MooseManager" else { return e }
+            let step = e.type == .swipe ? (e.deltaX > 0 ? -1 : e.deltaX < 0 ? 1 : 0) : (e.buttonNumber == 3 ? -1 : e.buttonNumber == 4 ? 1 : 0)
+            return MainActor.assumeIsolated { (step < 0 ? Nav.shared.back() : step > 0 ? Nav.shared.forward() : false) ? nil : e }
         }
     }
 }

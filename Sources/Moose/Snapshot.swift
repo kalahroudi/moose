@@ -24,7 +24,7 @@ enum SnapshotMode {
 
     @MainActor static var shots: [Shot] {
         func manager(_ name: String, _ p: Pane, dark: Bool = false, setup: Bool = false, open: Bool = false, id: String = "1", tab: SettingsPane.Tab = .general, folder: String? = nil) -> Shot {
-            Shot(name: name + (dark ? "-dark" : ""), dark: dark, size: CGSize(width: 1100, height: 720)) {
+            Shot(name: name + (dark ? "-dark" : ""), dark: dark, size: CGSize(width: 1100, height: 830)) {
                 let d = Demo.data()
                 MailModel.shared.loadDemo(setup ? MooseData() : d, signedIn: !setup, folders: Demo.folders())
                 Nav.shared.folder = folder

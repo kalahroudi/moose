@@ -7,9 +7,11 @@ public struct PriorityContext: Sendable {
     public var favourites: Set<String>
     public var repliedTo: Set<String>      // addresses the user has written to
     public var rules: [Rule]
+    public var snoozed: [String: Date]      // message id → when it comes back; hidden until then
+    public var resurfaced: Set<String>      // message ids whose snooze ran out and are waiting for the user
     public var now: Date
-    public init(favourites: Set<String> = [], repliedTo: Set<String> = [], rules: [Rule] = [], now: Date = Date()) {
-        self.favourites = favourites; self.repliedTo = repliedTo; self.rules = rules; self.now = now
+    public init(favourites: Set<String> = [], repliedTo: Set<String> = [], rules: [Rule] = [], snoozed: [String: Date] = [:], resurfaced: Set<String> = [], now: Date = Date()) {
+        self.favourites = favourites; self.repliedTo = repliedTo; self.rules = rules; self.snoozed = snoozed; self.resurfaced = resurfaced; self.now = now
     }
 }
 
@@ -54,12 +56,15 @@ public enum Priority {
             switch rule.action {
             case .favourite: add(40, "rule: \(rule.title)")
             case .boost(let n): add(n, "rule: \(rule.title)")
-            case .mute: muted = .rule; add(-50, "muted: \(rule.title)")
+            case .mute, .block: muted = .rule; add(-50, "muted: \(rule.title)")
             case .file: break   // filing happens in Gmail (see MailModel); it does not change the score
             }
         }
         // A favourite is never auto-muted by headers; only an explicit rule can silence them.
         if favourite, muted != nil, muted != .rule { muted = nil }
+        // A snooze is an explicit request, so it wins over everything else; when it runs out the message jumps the queue.
+        if ctx.snoozed[m.id] != nil { muted = .snoozed; add(-50, "snoozed") }
+        else if ctx.resurfaced.contains(m.id) { add(m.unread ? 30 : 52, "back from snooze") }
         return ScoredMessage(message: m, score: max(0, min(100, s)), reasons: why, muted: muted)
     }
 

@@ -26,6 +26,17 @@ final class ReaderTests: XCTestCase {
     Privacy policy
     """
 
+    func testInvisiblePaddingDoesNotCreateGaps() {
+        let c = MailText.clean("Kind regards,\n\u{200B}\n\u{00A0}\n\u{034F} \u{200C}\n\nThe School Office\n\u{2007}\n\nSENT TO: All Parents")
+        XCTAssertEqual(c.paragraphs, ["Kind regards,", "The School Office", "SENT TO: All Parents"])
+    }
+
+    func testSeparatorsAndFillersDoNotCreateGaps() {
+        let c = MailText.clean("Hello,\r\n\r\nWishing everyone a break.\u{2028}\u{2028}\u{3164}\u{2800}\u{2029}Kind regards,\u{0C}\u{85}\r\n\r\nThe Office")
+        XCTAssertFalse(c.paragraphs.contains { $0.isEmpty })
+        XCTAssertEqual(c.paragraphs.joined(separator: "|"), "Hello,|Wishing everyone a break.|Kind regards,|The Office")
+    }
+
     func testCleanRejoinsFragmentsAndFoldsFooter() {
         let c = MailText.clean(raw)
         XCTAssertTrue(c.paragraphs.contains("You now have 100 days left until the deadline to submit your online tax return for the 2025 to 2026 tax year."))
@@ -109,5 +120,48 @@ final class ReaderTests: XCTestCase {
         XCTAssertEqual(back.count, BriefStore.limit)
         XCTAssertNil(back["m0"])
         XCTAssertEqual(back["m\(BriefStore.limit + 4)"]?.summary, "s\(BriefStore.limit + 4)")
+    }
+}
+
+final class UnsubscribeTests: XCTestCase {
+    func testOneClickNeedsHttpsAndPostHeader() {
+        let o = UnsubscribeOption.parse(listUnsubscribe: "<mailto:stop@news.example?subject=unsub>, <https://news.example/u/123>", post: "List-Unsubscribe=One-Click")
+        XCTAssertEqual(o?.method, .oneClick(URL(string: "https://news.example/u/123")!))
+        XCTAssertEqual(o?.mailto?.to, "stop@news.example")
+    }
+
+    func testEmailBeatsPageWithoutOneClick() {
+        let o = UnsubscribeOption.parse(listUnsubscribe: "<https://news.example/u/1>, <mailto:stop@news.example?subject=Remove%20me>")
+        XCTAssertEqual(o?.method, .email(to: "stop@news.example", subject: "Remove me", body: "unsubscribe"))
+    }
+
+    func testPageOnlyIsBrowser() {
+        XCTAssertEqual(UnsubscribeOption.parse(listUnsubscribe: "<https://news.example/u/1>")?.method, .browser(URL(string: "https://news.example/u/1")!))
+    }
+
+    func testRefusesUnsafeAndPlainHttp() {
+        XCTAssertNil(UnsubscribeOption.parse(listUnsubscribe: "<http://news.example/u>", post: "List-Unsubscribe=One-Click"))
+        XCTAssertNil(UnsubscribeOption.parse(listUnsubscribe: "<https://localhost/u>"))
+        XCTAssertNil(UnsubscribeOption.parse(listUnsubscribe: "<https://192.168.1.5/u>"))
+        XCTAssertNil(UnsubscribeOption.parse(listUnsubscribe: "<https://127.0.0.1/u>"))
+        XCTAssertNil(UnsubscribeOption.parse(listUnsubscribe: "<mailto:a@x.com,b@y.com>"))
+        XCTAssertNil(UnsubscribeOption.parse(listUnsubscribe: nil))
+    }
+
+    func testBodyFallbackIsAlwaysAPage() {
+        let links = MailText.links(in: "Hi https://news.example/unsubscribe?id=1 and https://news.example/home")
+        XCTAssertEqual(UnsubscribeOption.fromBody(links)?.method, .browser(URL(string: "https://news.example/unsubscribe?id=1")!))
+        XCTAssertNil(UnsubscribeOption.fromBody(MailText.links(in: "see https://news.example/home")))
+    }
+
+    func testBlockRuleParsesAndSilences() {
+        let r = RuleParser.parse("block news@club.example")
+        XCTAssertEqual(r?.action, .block)
+        XCTAssertEqual(r?.senders, ["news@club.example"])
+        XCTAssertTrue(r?.isSilencing ?? false)
+        XCTAssertNil(RuleParser.parse("block invoices"))
+        let m = MailMessage(id: "1", threadId: "1", account: "me@x.example", fromName: "Club", fromEmail: "news@club.example", subject: "Sale", snippet: "", date: Date(), unread: true)
+        let s = Priority.score(m, PriorityContext(rules: [r!]))
+        XCTAssertEqual(s.muted, .rule)
     }
 }

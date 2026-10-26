@@ -6,6 +6,7 @@ public enum RuleAction: Codable, Hashable, Sendable {
     case favourite
     case boost(Int)
     case mute
+    case block             // mute, and archive what arrives (on every sync) so it never reaches the inbox
     case file(String)      // move to a Gmail label (shown as a folder) and out of the inbox
 }
 
@@ -36,7 +37,7 @@ public struct Rule: Codable, Identifiable, Hashable, Sendable {
         let from = (m.fromEmail + " " + m.fromName).lowercased()
         let text = (m.subject + " " + m.snippet + " " + from).lowercased()   // plain words also match the sender's name
         let senderOK = senders.isEmpty || senders.contains { from.contains($0) }
-        let wordOK = keywords.isEmpty || keywords.contains { text.contains($0) }
+        let wordOK = keywords.isEmpty || keywords.contains { k in k.split(separator: " ").allSatisfy { text.contains($0) } }   // a phrase matches when all its words appear, in any order
         return senderOK && wordOK
     }
 
@@ -50,8 +51,11 @@ public struct Rule: Codable, Identifiable, Hashable, Sendable {
     }
 
     public var actionText: String {
-        switch action { case .favourite: "always Priority"; case .boost(let n): "boost \(n >= 0 ? "+" : "")\(n)"; case .mute: until.map { "mute until " + $0.formatted(date: .abbreviated, time: .omitted) } ?? "mute"; case .file(let f): "file in “\(f)”" }
+        switch action { case .favourite: "always Priority"; case .boost(let n): "boost \(n >= 0 ? "+" : "")\(n)"; case .block: "block (mute and archive)"; case .mute: until.map { "mute until " + $0.formatted(date: .abbreviated, time: .omitted) } ?? "mute"; case .file(let f): "file in “\(f)”" }
     }
+
+    /// Mute and block both silence a sender.
+    public var isSilencing: Bool { action == .mute || action == .block }
 
     public var folder: String? { if case .file(let f) = action { f } else { nil } }
 }
@@ -98,6 +102,10 @@ public enum RuleParser {
         let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
         let lower = t.lowercased()
         if let r = parseFolder(t) { return r }
+        if lower.hasPrefix("block ") {
+            let tg = target(String(lower.dropFirst(6)))
+            return tg.senders.isEmpty ? nil : Rule(senders: tg.senders, action: .block)   // blocking archives mail, so it needs a sender, never just a word
+        }
         for p in ["mute ", "silence ", "hide ", "ignore ", "snooze ", "stop "] where lower.hasPrefix(p) {
             var rest = String(lower.dropFirst(p.count))
             if p == "stop " { guard rest.hasPrefix("emails ") || rest.hasPrefix("mail ") else { return nil } }

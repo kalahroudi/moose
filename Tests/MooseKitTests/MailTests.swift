@@ -96,6 +96,13 @@ final class MailTests: XCTestCase {
         XCTAssertNil(Priority.score(m, PriorityContext(rules: [r!], now: now.addingTimeInterval(5 * 86400))).muted)
     }
 
+    func testPhraseKeywordMatchesWordsInAnyOrder() {
+        let r = Rule(keywords: ["Oakfield School"], action: .file("Oakfield School"))
+        XCTAssertTrue(r.matches(msg("Oakfield Junior School <office@oakfield.example>", "Newsletter")))
+        XCTAssertTrue(r.matches(msg("Oakfield Inf and Nurs School <office@oakfield.example>", "Newsletter")))
+        XCTAssertFalse(r.matches(msg("Pine School <office@pine.example>", "Newsletter")))
+    }
+
     func testFolderRuleSurvivesStorage() throws {
         var d = MooseData(); d.rules = [Rule(keywords: ["school"], action: .file("School"))]
         let back = try JSONDecoder().decode(MooseData.self, from: JSONEncoder().encode(d))
@@ -296,5 +303,13 @@ final class FolderTests: XCTestCase {
         var d = MooseData(); d.folderOrder = ["B", "A"]; d.keepInInbox = ["m1"]
         let back = try JSONDecoder().decode(MooseData.self, from: JSONEncoder().encode(d))
         XCTAssertEqual(back.folderOrder, ["B", "A"]); XCTAssertEqual(back.keepInInbox, ["m1"])
+    }
+
+    func testFolderCacheRoundTripsAndOldFilesStillLoad() throws {
+        var d = MooseData()
+        d.folderCache["school"] = [MailMessage(id: "f1", threadId: "f1", account: "me@x.com", fromName: "A", fromEmail: "a@x.com", subject: "Hi", snippet: "", date: Date(timeIntervalSince1970: 100), unread: true, labels: [])]
+        let back = try JSONDecoder().decode(MooseData.self, from: JSONEncoder().encode(d))
+        XCTAssertEqual(back.folderCache["school"]?.map(\.id), ["f1"])
+        XCTAssertTrue(try JSONDecoder().decode(MooseData.self, from: Data("{}".utf8)).folderCache.isEmpty)
     }
 }

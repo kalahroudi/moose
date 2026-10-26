@@ -35,7 +35,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
         popover.delegate = self
         model.onStatusChange = { [weak self] state in self?.statusItem.button?.image = StatusIcon.image(state) }
 
-        Task { await model.refresh(); model.onStatusChange?(MailModel.shared.count(.priority) > 0 ? .active : .idle) }
+        Task { await model.refresh(); model.onStatusChange?(MailModel.shared.attentionCount > 0 ? .active : .idle); MailModel.shared.scheduleFollowUps() }
         Updater.shared.confirmLaunch()                                   // tells a pending swap script "the new version started"
         Task { Updater.shared.autoCheckIfDue(enabled: Prefs.shared.autoCheckUpdates) }
         if model.needsSetup { showManager(pane: .priority) }                            // first run: show the guided setup, not an empty window
