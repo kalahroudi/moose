@@ -27,6 +27,8 @@ final class ListState {
     var order: [MailMessage] = []      // rows as displayed, so the thread view can step to the next or previous message
     var selecting = false              // checkbox mode for bulk archive / delete
     var checked = Set<String>()        // message ids ticked in selecting mode
+    var pinnedKeys: [String] = []      // stack order as last shown, so removing a message doesn't reshuffle the groups
+    var pinnedSig = ""                 // what that order was for (pane, sort, filters); a different view starts afresh
 
     func toggle(_ ids: [String]) {
         if ids.allSatisfy(checked.contains) { checked.subtract(ids) } else { checked.formUnion(ids) }
@@ -73,7 +75,20 @@ struct StackListPane: View {
     private var folderName: String? { pane == .folder ? nav.folder : nil }
     private var title: String { folderName ?? pane.title }
 
+    /// Everything that decides stack order. While it stays the same, stacks keep their places.
+    private var orderSig: String { "\(pane)|\(folderName ?? "")|\(ls.layout)|\(ls.isUnreadOnly(pane))|\(query)" }
+
+    /// Deleting, archiving or filing a message lowers its stack's score; re-sorting then makes the groups jump under the highlight.
+    /// Keep the order the user was looking at until the view, sort or filters change or new mail arrives.
     private var stacks: [MailStack] {
+        let fresh = freshStacks
+        guard ls.pinnedSig == orderSig, !ls.pinnedKeys.isEmpty else { return fresh }
+        let rank = Dictionary(ls.pinnedKeys.enumerated().map { ($1, $0) }, uniquingKeysWith: { a, _ in a })
+        guard fresh.allSatisfy({ rank[$0.key] != nil }) else { return fresh }   // a new stack appeared: show the natural order
+        return fresh.sorted { rank[$0.key]! < rank[$1.key]! }
+    }
+
+    private var freshStacks: [MailStack] {
         if let f = folderName {
             let all = mail.folderStacks(f)
             return Stacker.refine(ls.isUnreadOnly(pane) ? all.compactMap { s in
@@ -142,6 +157,9 @@ struct StackListPane: View {
             keys
         }
         .task(id: folderName ?? "") { if let f = folderName { await mail.loadFolder(f) } }
+        .onChange(of: stacks.map(\.key), initial: true) { _, keys in ls.pinnedKeys = keys; ls.pinnedSig = orderSig }
+        .onChange(of: orderSig) { _, _ in ls.pinnedKeys = stacks.map(\.key); ls.pinnedSig = orderSig }
+        .onChange(of: mail.lastSync) { _, _ in ls.pinnedKeys = [] }   // fresh mail: let the stacks re-rank
         .onChange(of: visible.map(\.id), initial: true) { _, _ in
             let was = ls.order.firstIndex { $0.id == ls.selection }
             ls.order = visible.map(\.message)
