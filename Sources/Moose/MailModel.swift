@@ -31,7 +31,7 @@ final class MailModel {
     var syncing = false
     var signingIn = false
     private var signInServer: LoopbackServer?
-    var client: GoogleClient? = GoogleClient.load()
+    var client: GoogleClient? = CommandLine.arguments.contains("--demo") ? nil : GoogleClient.load()   // --demo never touches the Keychain
     var outbox: [PendingSend] = []
     var loadedOnce = false
     /// Screenshot mode: sample data only, nothing is read from or written to disk or the network.

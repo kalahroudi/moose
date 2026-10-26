@@ -21,7 +21,7 @@ enum MooseMain {
 
         // Only one copy may run: two would poll the same resources and fight over the menu bar item.
         // Leave before any app state exists, and ask the running copy to show its window.
-        if SnapshotMode.dir == nil, let other = Self.otherRunningInstance() {
+        if SnapshotMode.dir == nil, !args.contains("--demo"), let other = Self.otherRunningInstance() {
             if let url = other.bundleURL { NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration()) } else { other.activate() }
             Thread.sleep(forTimeInterval: 0.3)
             exit(0)

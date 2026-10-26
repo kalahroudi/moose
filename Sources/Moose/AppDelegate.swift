@@ -18,7 +18,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         if SnapshotMode.dir != nil { SnapshotMode.run(); return }
-        MailModel.shared.startControl()                                  // agents (moose-mcp) talk to the app over loopback
+        let demo = CommandLine.arguments.contains("--demo")              // sample mail in the real window, for trying the UI; no accounts, no control server
+        if !demo { MailModel.shared.startControl() }   // agents (moose-mcp) talk to the app over loopback
         Prefs.shared.applyTheme()
         Prefs.shared.applyDockIcon()
         NSApp.applicationIconImage = AppIcon.image(size: 512, padded: true)
@@ -35,6 +36,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
         popover.delegate = self
         model.onStatusChange = { [weak self] state in self?.statusItem.button?.image = StatusIcon.image(state) }
 
+        if demo { MailModel.shared.loadDemo(Demo.data(), signedIn: true, folders: Demo.folders()); showManager(pane: .priority); return }
         Task { await model.refresh(); model.onStatusChange?(MailModel.shared.attentionCount > 0 ? .active : .idle); MailModel.shared.scheduleFollowUps() }
         Updater.shared.confirmLaunch()                                   // tells a pending swap script "the new version started"
         Task { Updater.shared.autoCheckIfDue(enabled: Prefs.shared.autoCheckUpdates) }
