@@ -148,7 +148,10 @@ struct StackListPane: View {
                 }
                 .overlay(alignment: .bottomTrailing) { if !visible.isEmpty { jumpButtons(proxy) } }
                 .background { jumpKeys(proxy) }
-                .onChange(of: ls.selection) { _, id in if let id { withAnimation(.easeOut(duration: 0.12)) { proxy.scrollTo(id) } } }
+                .onChange(of: ls.selection) { _, id in
+                    // Wait a turn so a row that was just laid out (or just moved) is known to the proxy; animating here made lazy rows miss.
+                    if let id { Task { @MainActor in proxy.scrollTo(id) } }
+                }
             }
             if pane == .priority, !mail.mutedSummary().isEmpty {
                 Divider()
