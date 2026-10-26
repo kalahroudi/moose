@@ -52,13 +52,19 @@ PLIST
 
 # Ad-hoc signed by default. With SIGN_IDENTITY set to a "Developer ID Application: ..." identity it is signed
 # for distribution with the hardened runtime.
+#
+# The Keychain remembers "Always Allow" by the app's designated requirement. An ad-hoc signature's default requirement is
+# the exact build hash, so every rebuild or update would be a stranger and macOS would ask for the password again. Pin the
+# requirement to the bundle identifiers instead, so it stays the same from one build to the next.
 if [ "${SIGN_IDENTITY:--}" = "-" ]; then
-  SIGN_FLAGS=(--force --sign -)
+  APP_FLAGS=(--force --sign - -r='designated => identifier "com.kalahroudi.moose"')
+  MCP_FLAGS=(--force --sign - --identifier com.kalahroudi.moose.mcp -r='designated => identifier "com.kalahroudi.moose.mcp"')
 else
-  SIGN_FLAGS=(--force --timestamp --options runtime --entitlements scripts/Moose.entitlements --sign "$SIGN_IDENTITY")
+  APP_FLAGS=(--force --timestamp --options runtime --entitlements scripts/Moose.entitlements --sign "$SIGN_IDENTITY")
+  MCP_FLAGS=(--force --timestamp --options runtime --entitlements scripts/Moose.entitlements --sign "$SIGN_IDENTITY" --identifier com.kalahroudi.moose.mcp)
 fi
-codesign "${SIGN_FLAGS[@]}" "$APP/Contents/MacOS/moose-mcp"
-codesign "${SIGN_FLAGS[@]}" "$APP"
+codesign "${MCP_FLAGS[@]}" "$APP/Contents/MacOS/moose-mcp"
+codesign "${APP_FLAGS[@]}" "$APP"
 codesign --verify --strict "$APP"
 
 echo "Built $APP"
