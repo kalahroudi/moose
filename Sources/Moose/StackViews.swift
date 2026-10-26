@@ -143,8 +143,12 @@ struct StackListPane: View {
         }
         .task(id: folderName ?? "") { if let f = folderName { await mail.loadFolder(f) } }
         .onChange(of: visible.map(\.id), initial: true) { _, _ in
+            let was = ls.order.firstIndex { $0.id == ls.selection }
             ls.order = visible.map(\.message)
-            if let s = ls.selection, !visible.contains(where: { $0.id == s }) { ls.selection = nil }
+            if let s = ls.selection, !visible.contains(where: { $0.id == s }) {
+                // The highlighted row went away (deleted, archived, filed): keep the highlight, on the row that took its place.
+                ls.selection = was.flatMap { visible.isEmpty ? nil : visible[min($0, visible.count - 1)].id }
+            }
             ls.checked.formIntersection(flat.map(\.id))
         }
     }
@@ -493,6 +497,7 @@ struct MessageRow: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .focusable(false)   // a clicked row must not hold keyboard focus: when ⌫ removes it, the ↑ ↓ shortcuts would die with it
         .onHover { hover = $0 }
         .contextMenu {
             Button("Mark as read") { mail.markRead(m) }
