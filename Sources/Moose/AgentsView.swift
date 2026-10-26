@@ -14,7 +14,7 @@ struct AgentsView: View {
     @State private var error: String?
     @State private var manual = false
     private let server = AgentIntegrations.serverPath()
-    private var serverMissing: Bool { !FileManager.default.isExecutableFile(atPath: server) }
+    private var serverMissing: Bool { !AppModel.shared.demo && !FileManager.default.isExecutableFile(atPath: server) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -101,7 +101,15 @@ struct AgentsView: View {
         }
     }
 
-    private func scan() { statuses = AgentIntegrations.scan(serverPath: server) }
+    private func scan() {
+        // Screenshots must not show what is installed on this Mac or paths in the home folder.
+        if AppModel.shared.demo {
+            statuses = [.init(kind: .claudeCode, state: .connected), .init(kind: .claudeDesktop, state: .connected), .init(kind: .cursor, state: .available),
+                        .init(kind: .windsurf, state: .notDetected), .init(kind: .geminiCLI, state: .notDetected), .init(kind: .codexCLI, state: .notDetected)]
+            return
+        }
+        statuses = AgentIntegrations.scan(serverPath: server)
+    }
 
     private func run(_ kind: AgentKind, install: Bool) {
         busy = kind; error = nil; restartHint = nil

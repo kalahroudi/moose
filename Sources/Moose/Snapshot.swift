@@ -64,6 +64,7 @@ enum SnapshotMode {
     }
 
     @MainActor static func render(_ shot: Shot, to dir: String) async {
+        AppModel.shared.toast = nil   // a toast from the previous screen must never leak into this one
         let host = NSHostingView(rootView: shot.make().frame(width: shot.size.width, height: shot.size.height))
         let win = NSWindow(contentRect: NSRect(origin: .zero, size: shot.size), styleMask: [.borderless], backing: .buffered, defer: false)
         win.appearance = NSAppearance(named: shot.dark ? .darkAqua : .aqua)
