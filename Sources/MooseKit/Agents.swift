@@ -33,6 +33,7 @@ public struct AgentStatus: Identifiable, Equatable, Sendable {
     public var state: State
     public var id: String { kind.rawValue }
     public var detected: Bool { state != .notDetected }
+    public init(kind: AgentKind, state: State) { self.kind = kind; self.state = state }
 }
 
 public enum AgentIntegrations {

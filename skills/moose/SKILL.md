@@ -17,7 +17,7 @@ Moose is a text-only, stacked, multi-account Gmail client. Mail is grouped into 
 ## Typical flow
 
 1. `get_status`: accounts, access level, how many stacks need attention. If `accounts` is empty, tell the user to finish setup in Moose.
-2. `list_stacks {view: "priority"}`: ranked stacks with `why`. Summarise the top few for the user.
+2. `list_stacks {view: "priority"}`: ranked stacks with `why`. Optional `sort` (priority, newest, oldest, sender, size), `range` (today, week, month) and `origin` (people, automated) match the window's filters. Summarise the top few for the user.
 3. `get_brief {message_id}` for the gist (summary, what it asks, urgency, dates; cached). `read_message` or `get_clean_text` (tidied text, tracking links listed apart) before judging or replying.
 4. Organise: `set_favourite`, `mute_sender`, `create_rule` ("mute newsletters", "favourite maya@acme.com", "boost invoice by 25", "mute X for a week", "move emails from X to Folder Name"), `mark_read`, `archive_message`. Muting hides mail from Priority, it never deletes. `block_sender` also archives their mail now and on every sync (undo with `undo_last` or `delete_rule`). For mailing lists, check `get_unsubscribe_options`, then `unsubscribe` (needs the user's go-ahead and `confirm: true`; sends a one-click request or a short email, then blocks the sender). Mention what you changed so the user can undo it (`delete_rule`).
    Filed mail: `list_folders` shows the folders in the user's order (the first 5 show in the sidebar, the rest are wrapped under "more"); `list_folder {name}` returns its messages with ids that work with `read_message`, `mark_read` and `archive_messages`. Never delete a folder or empty it without asking.

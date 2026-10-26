@@ -26,9 +26,14 @@ Never call a destructive tool without asking me first.
 - **Priority assessment.** Every message gets a transparent 0–100 score from signals on your Mac: favourites, people you write to, questions, deadlines, money, security notices, unread, recency. The *why* is shown next to each stack.
 - **Noise free.** Newsletters, promos and automated mail are muted (never deleted). Text only: HTML is stripped and images and tracking pixels are never loaded.
 - **Smart routing.** Plain-language rules: `favourite maya@acme.com`, `mute newsletters, promos`, `mute news@club.com for a week`, `boost invoice, payment by 25`, and folders: `move emails from stripe.com to Receipts` labels that mail in Gmail, takes it out of the inbox, and keeps filing new mail (undo from the toast).
+- **Unsubscribe and block.** One click unsubscribes from a newsletter (by email or its page, whichever it offers) or blocks a sender for good. Agents can do the same with `get_unsubscribe_options`, `unsubscribe` and `block_sender`.
 - **Follow-ups.** The alarm button on any message snoozes it (later today, tomorrow, this weekend, next week or a date you pick) or asks to be reminded if nobody replies in 1–14 days; the reply box has the same "Follow up" switch. Snoozed mail leaves Priority and comes back unread at the top, with a notification. Reply reminders check the thread in Gmail, so an answer cancels them. Everything open is in **Follow up** in the sidebar. One sleeping timer wakes the app at the next reminder; nothing polls. Agents get the same with `snooze_message`, `remind_if_no_reply`, `list_follow_ups` and `complete_follow_up`.
 - **Dictation with the lid closed.** Docked Mac? Moose listens through your iPhone (Continuity microphone) automatically, or pick any microphone in Settings → Dictation.
 - **Folders.** Filed mail is not lost: every folder is in the sidebar (the first five, the rest under "N more"), opens as stacks, and goes through the Stack window (⌘T, source picker or ⇧⌘[ ⇧⌘]). Drag to reorder; right-click to mark all read, move to inbox, clear, rename, empty or delete.
+- **Find and sort.** Switch between *Stacks* and *All messages*, then narrow by unread, date range (today, week, month or custom), people vs. newsletters and notifications, or the search box. Sort by priority, newest, oldest, sender or stack size. Click a group to expand or collapse it, or use *Expand all*. Arrow keys and Return move through the list.
+- **Select and bulk act.** *Select* turns on checkboxes; archive or delete many messages at once, or delete a single message from its row. Every action has Undo (`⌘Z`).
+- **Reader.** Open a message and get a **Brief** at the top (the gist, what it asks of you, urgency, dates, tracking links hidden), made on your Mac by your own Claude CLI and cached. *Details* (`D`) shows the cleaned original: blank runs removed, footers folded, tracking links listed apart. Quick actions: Archive (`E`), Mute for a week, Reply (`R`).
+- **Docked reply.** The reply box stays at the bottom of the reader, saved as you type. Select a passage and reply to just that quote, **Draft with Claude**, make it Shorter or Warmer, toggle Reply all, or press **Dictate** to speak it (speech is transcribed on your Mac).
 - **Favourite stacking.** Star a sender and they always rank high and are never auto-muted.
 - **MCP-first.** `moose-mcp` ships inside the app. Everything you can do in the window, an agent can do. You decide how much: *Read only*, *Draft & ask* (every send needs your approval in a native dialog) or *Full access* (sends after an undo window).
 - **Stack window (⌘T).** The quiet way through your priority mail: one card at a time, nothing else. `←` `→` to move, **Read**, **Reply**, **Delete** (Gmail Trash, recoverable for 30 days), and **All ▾** for mass actions: archive, mark read or delete everything from this sender or the whole stack. No confirmation dialogs; every action shows an Undo bar and `⌘Z` restores it.
@@ -41,8 +46,12 @@ Never call a destructive tool without asking me first.
 | <img src="docs/screenshots/stack.png" width="420"> | <img src="docs/screenshots/stack-reply.png" width="420"> |
 | **Mass actions** | **Menu bar** |
 | <img src="docs/screenshots/stack-all.png" width="420"> | <img src="docs/screenshots/popover.png" width="420"> |
-| **Routing** | **Agents** |
-| <img src="docs/screenshots/routing.png" width="420"> | <img src="docs/screenshots/agents-dark.png" width="420"> |
+| **Reader with brief** | **Docked reply and dictation** |
+| <img src="docs/screenshots/thread-brief.png" width="420"> | <img src="docs/screenshots/thread-reply-dark.png" width="420"> |
+| **Folders** | **Routing** |
+| <img src="docs/screenshots/folder-dark.png" width="420"> | <img src="docs/screenshots/routing.png" width="420"> |
+| **Agents** | |
+| <img src="docs/screenshots/agents-dark.png" width="420"> | |
 
 (Screenshots use made-up sample data.)
 
@@ -74,7 +83,7 @@ swift build && swift test && scripts/bundle.sh && open dist/Moose.app
 
 ## MCP tools
 
-`get_status` · `list_stacks` · `search_messages` · `list_rules` · `read_message` · `get_clean_text` · `get_brief` · `sync_mail` · `mark_read` · `archive_message` · `archive_messages` · `trash_messages` · `undo_last` · `snooze_message` · `remind_if_no_reply` · `list_follow_ups` · `complete_follow_up` · `set_favourite` · `mute_sender` · `block_sender` · `get_unsubscribe_options` · `unsubscribe` · `create_rule` · `delete_rule` · `list_microphones` · `set_microphone` · `list_folders` · `list_folder` · `folder_action` · `move_to_inbox` · `rename_folder` · `move_folder` · `set_folder_filing` · `delete_folder` · `draft_reply` · `send_reply` · `draft_email` · `send_email`
+`get_status` · `list_stacks` (sort, date range and people/automated filters) · `search_messages` · `list_rules` · `read_message` · `get_clean_text` · `get_brief` · `sync_mail` · `mark_read` · `archive_message` · `archive_messages` · `trash_messages` · `undo_last` · `snooze_message` · `remind_if_no_reply` · `list_follow_ups` · `complete_follow_up` · `set_favourite` · `mute_sender` · `block_sender` · `get_unsubscribe_options` · `unsubscribe` · `create_rule` · `delete_rule` · `list_microphones` · `set_microphone` · `list_folders` · `list_folder` · `folder_action` · `move_to_inbox` · `rename_folder` · `move_folder` · `set_folder_filing` · `delete_folder` · `draft_reply` · `send_reply` · `draft_email` · `send_email`
 
 Connect agents from **Agents** in the sidebar (Claude Code, Claude Desktop, Cursor, Windsurf, Gemini CLI, Codex CLI), or manually:
 
@@ -93,7 +102,7 @@ Read tools work from the local cache even when the app is closed. Everything tha
 
 ## Status
 
-v0.1. The scoring, stacking, rules, MIME handling, OAuth/PKCE, send policy, scrubber and persistence have unit tests (`swift test`). The Gmail and Google sign-in paths are written against Google's documented REST API but have so far been exercised only by their parsing and request-building code; please open an issue if a real account misbehaves.
+Early releases (0.x). The scoring, stacking, rules, MIME handling, OAuth/PKCE, send policy, scrubber and persistence have unit tests (`swift test`). The Gmail and Google sign-in paths are written against Google's documented REST API but have so far been exercised only by their parsing and request-building code; please open an issue if a real account misbehaves.
 
 ## License
 
