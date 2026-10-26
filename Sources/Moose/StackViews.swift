@@ -79,7 +79,7 @@ struct StackListPane: View {
     private var orderSig: String { "\(pane)|\(folderName ?? "")|\(ls.layout)|\(ls.isUnreadOnly(pane))|\(query)" }
 
     /// Deleting, archiving or filing a message lowers its stack's score; re-sorting then makes the groups jump under the highlight.
-    /// Keep the order the user was looking at until the view, sort or filters change or new mail arrives.
+    /// Keep the order the user was looking at until the view, sort or filters change or a new stack appears.
     private var stacks: [MailStack] {
         let fresh = freshStacks
         guard ls.pinnedSig == orderSig, !ls.pinnedKeys.isEmpty else { return fresh }
@@ -159,7 +159,6 @@ struct StackListPane: View {
         .task(id: folderName ?? "") { if let f = folderName { await mail.loadFolder(f) } }
         .onChange(of: stacks.map(\.key), initial: true) { _, keys in ls.pinnedKeys = keys; ls.pinnedSig = orderSig }
         .onChange(of: orderSig) { _, _ in ls.pinnedKeys = stacks.map(\.key); ls.pinnedSig = orderSig }
-        .onChange(of: mail.lastSync) { _, _ in ls.pinnedKeys = [] }   // fresh mail: let the stacks re-rank
         .onChange(of: visible.map(\.id), initial: true) { _, _ in
             let was = ls.order.firstIndex { $0.id == ls.selection }
             ls.order = visible.map(\.message)
