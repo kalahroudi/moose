@@ -241,8 +241,19 @@ struct StackListPane: View {
             Button("") { if let m = ls.selected { nav.open = m; mail.markRead(m) } }.keyboardShortcut(.return, modifiers: [])
             Button("") { setExpanded(true) }.keyboardShortcut(.rightArrow, modifiers: [])
             Button("") { setExpanded(false) }.keyboardShortcut(.leftArrow, modifiers: [])
-            Button("") { if let m = ls.selected { mail.apply(.trash, to: [m], container: ls.container) } }.keyboardShortcut(.delete, modifiers: .command)
+            Button("") { deleteHighlighted() }.keyboardShortcut(.delete, modifiers: [])
+            Button("") { deleteHighlighted() }.keyboardShortcut(.deleteForward, modifiers: [])
+            Button("") { deleteHighlighted() }.keyboardShortcut(.delete, modifiers: .command)
         }.opacity(0).frame(width: 0, height: 0).allowsHitTesting(false)
+    }
+
+    /// Moves the highlighted message to Trash (recoverable: Undo toast, ⌘Z, 30 days in Gmail) and highlights its neighbour so ⌫ can be pressed again.
+    private func deleteHighlighted() {
+        guard let m = ls.selected else { return }
+        let i = ls.order.firstIndex { $0.id == m.id }
+        let next = i.flatMap { ls.order.indices.contains($0 + 1) ? ls.order[$0 + 1] : $0 > 0 ? ls.order[$0 - 1] : nil }
+        guard mail.apply(.trash, to: [m], container: ls.container) != nil else { return }
+        ls.selection = next?.id
     }
 
     private func setExpanded(_ on: Bool) {
